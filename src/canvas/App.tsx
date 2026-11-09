@@ -319,7 +319,8 @@ export const App = () => {
     if (gesture.kind === 'move') {
       setGesture({ ...gesture, moved: gesture.moved || moved });
       const zoneOnly = !e.shiftKey;
-      const aligned = e.shiftKey ? alignedMove(gesture.base, gesture.selection, delta, zoneOnly) : { delta, guides: [] };
+      const raw = { x: world.x - gesture.start.x, y: world.y - gesture.start.y };
+      const aligned = e.shiftKey ? alignedMove(gesture.base, gesture.selection, raw, zoneOnly) : { delta, guides: [] };
       setGuides(aligned.guides);
       setDraft(apply(gesture.base, { type: 'moveItems', selection: gesture.selection, delta: aligned.delta, zoneOnly }));
     } else if (gesture.kind === 'slide') {

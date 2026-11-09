@@ -1,4 +1,4 @@
-import { blockSize, noteSize } from '../routing/routing.ts';
+import { blockSize, noteSize, snap } from '../routing/routing.ts';
 import { movingIds } from './project.ts';
 import type { Point, Project, Selection } from './types.ts';
 
@@ -6,7 +6,7 @@ export type Guide = { axis: 'x' | 'y'; at: number; from: number; to: number };
 type Rect = { x: number; y: number; w: number; h: number };
 type Axis = 'x' | 'y';
 
-const SNAP_DISTANCE = 8;
+const SNAP_DISTANCE = 25;
 const SAME = 0.5;
 
 const span = (r: Rect, axis: Axis) => (axis === 'x' ? { lo: r.x, size: r.w } : { lo: r.y, size: r.h });
@@ -18,11 +18,13 @@ const stops = (r: Rect, axis: Axis): number[] => {
 
 const other = (axis: Axis): Axis => (axis === 'x' ? 'y' : 'x');
 
-const snapOffset = (moving: Rect, targets: Rect[], axis: Axis): number =>
+const alignOffset = (moving: Rect, targets: Rect[], axis: Axis): number | null =>
   stops(moving, axis)
     .flatMap(m => targets.flatMap(t => stops(t, axis).map(s => s - m)))
     .filter(offset => Math.abs(offset) <= SNAP_DISTANCE)
-    .reduce((best, offset) => (best === null || Math.abs(offset) < Math.abs(best) ? offset : best), null as number | null) ?? 0;
+    .reduce<number | null>((best, offset) => (best === null || Math.abs(offset) < Math.abs(best) ? offset : best), null);
+
+const settledDelta = (raw: number, offset: number | null): number => (offset === null ? snap(raw) : raw + offset);
 
 const guidesOn = (moving: Rect, targets: Rect[], axis: Axis): Guide[] => {
   const mine = stops(moving, axis);
@@ -59,13 +61,13 @@ export const alignedMove = (
   const zones = project.zones.map(({ x, y, w, h, id }) => ({ moving: selection.zones.includes(id), rect: { x, y, w, h } }));
   const items = [...blocks, ...notes, ...zones];
   const movers = items.filter(i => i.moving).map(i => i.rect);
-  if (movers.length === 0) return { delta, guides: [] };
+  if (movers.length === 0) return { delta: { x: snap(delta.x), y: snap(delta.y) }, guides: [] };
   const targets = items.filter(i => !i.moving).map(i => i.rect);
   const start = boundsOf(movers);
   const dragged = { ...start, x: start.x + delta.x, y: start.y + delta.y };
   const finalDelta = {
-    x: delta.x + snapOffset(dragged, targets, 'x'),
-    y: delta.y + snapOffset(dragged, targets, 'y'),
+    x: settledDelta(delta.x, alignOffset(dragged, targets, 'x')),
+    y: settledDelta(delta.y, alignOffset(dragged, targets, 'y')),
   };
   const landed = { ...start, x: start.x + finalDelta.x, y: start.y + finalDelta.y };
   return { delta: finalDelta, guides: [...guidesOn(landed, targets, 'x'), ...guidesOn(landed, targets, 'y')] };

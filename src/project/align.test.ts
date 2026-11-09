@@ -37,13 +37,20 @@ test('centres align with centres', () => {
   assert.ok(guides.some(g => g.axis === 'x' && g.at === 400));
 });
 
+test('an aligned item holds until pulled clearly past the alignment, then returns to the grid', () => {
+  assert.equal(alignedMove(twoBlocks(), b, { x: -585, y: 0 }, true).delta.x, -600);
+  assert.equal(alignedMove(twoBlocks(), b, { x: -615, y: 0 }, true).delta.x, -600);
+  assert.equal(alignedMove(twoBlocks(), b, { x: -376, y: 0 }, true).delta.x, -400);
+  assert.deepEqual(alignedMove(twoBlocks(), b, { x: -374, y: 0 }, true), { delta: { x: -370, y: 0 }, guides: [] });
+});
+
 test('nothing snaps when no edge is near', () => {
-  assert.deepEqual(alignedMove(twoBlocks(), b, { x: -520, y: 0 }, true), { delta: { x: -520, y: 0 }, guides: [] });
+  assert.deepEqual(alignedMove(twoBlocks(), b, { x: -340, y: 0 }, true), { delta: { x: -340, y: 0 }, guides: [] });
 });
 
 test('items being moved are not alignment targets', () => {
   const both = { ...emptySelection(), blocks: ['b1', 'b2'] };
-  assert.deepEqual(alignedMove(twoBlocks(), both, { x: 3, y: 3 }, true), { delta: { x: 3, y: 3 }, guides: [] });
+  assert.deepEqual(alignedMove(twoBlocks(), both, { x: 3, y: 3 }, true), { delta: { x: 0, y: 0 }, guides: [] });
 });
 
 test('Notes are alignment targets', () => {
@@ -54,6 +61,6 @@ test('Notes are alignment targets', () => {
 test('a Zone aligns with what is inside it only when it leaves its contents behind', () => {
   const project = apply(twoBlocks(), { type: 'createZone', name: 'Z', x: 200, y: 200, w: 400, h: 200 });
   const zone = { ...emptySelection(), zones: ['z1'] };
-  assert.equal(alignedMove(project, zone, { x: 97, y: 0 }, false).delta.x, 97);
-  assert.equal(alignedMove(project, zone, { x: 97, y: 0 }, true).delta.x, 100);
+  assert.equal(alignedMove(project, zone, { x: 93, y: 0 }, false).delta.x, 90);
+  assert.equal(alignedMove(project, zone, { x: 93, y: 0 }, true).delta.x, 100);
 });
