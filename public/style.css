@@ -26,6 +26,8 @@ button:hover { border-color:var(--accent); }
 .modal .counts input { width:100%; }
 .pin-list { height:280px; overflow-y:auto; }
 .pin-row { display:grid; grid-template-columns:30px 1fr 90px; gap:6px; align-items:center; margin-bottom:3px; }
+.distance { display:grid; grid-template-columns:1fr 90px; gap:6px; align-items:center; margin-bottom:3px; }
+.distance input { width:100%; }
 .error { color:var(--warn); }
 .block-name { font-size:13px; font-weight:600; fill:var(--ink); pointer-events:none; }
 .block-label { font-size:13px; font-weight:600; fill:var(--accent); pointer-events:none; }

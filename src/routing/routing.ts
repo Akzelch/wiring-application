@@ -1,9 +1,10 @@
+import { wireWidth } from '../project/gauge.ts';
 import type { Block, Harness, Note, Pin, Point, Project, Side, Wire, WireEnd, Zone } from '../project/types.ts';
 
 export const GRID = 10;
 export const PITCH = 20;
 export const STUB = 20;
-export const WIRE_WIDTH = 1.8;
+export const WIRE_WIDTH = wireWidth(undefined);
 const HARNESS_OVERHANG = 8;
 const HARNESS_GAP = 12;
 
@@ -11,9 +12,11 @@ export const snap = (v: number): number => Math.round(v / GRID) * GRID;
 
 const sideCount = (b: Block, s: Side) => b.pins.filter(p => p.side === s).length;
 
+const scaleOf = (b: Block): number => b.scale ?? 1;
+
 export const blockSize = (b: Block): { w: number; h: number } => ({
-  w: Math.max(100, (Math.max(sideCount(b, 'top'), sideCount(b, 'bottom')) + 1) * PITCH),
-  h: Math.max(60, (Math.max(sideCount(b, 'left'), sideCount(b, 'right')) + 1) * PITCH),
+  w: Math.max(100, (Math.max(sideCount(b, 'top'), sideCount(b, 'bottom')) + 1) * PITCH) * scaleOf(b),
+  h: Math.max(60, (Math.max(sideCount(b, 'left'), sideCount(b, 'right')) + 1) * PITCH) * scaleOf(b),
 });
 
 export const blockCentre = (b: Block): Point => {
@@ -23,7 +26,7 @@ export const blockCentre = (b: Block): Point => {
 
 export const pinPoint = (b: Block, p: Pin): Point => {
   const { w, h } = blockSize(b);
-  const o = (p.order + 1) * PITCH;
+  const o = (p.order + 1) * PITCH * scaleOf(b);
   return {
     left: { x: b.x, y: b.y + o },
     right: { x: b.x + w, y: b.y + o },
@@ -238,6 +241,7 @@ type LaneSegment = {
   turnStart: number;
   turnEnd: number;
   harness: string | null;
+  width: number;
 };
 type Placed = LaneSegment & { offset: number };
 
@@ -277,6 +281,7 @@ const describeSegments = (routes: { w: Wire; pts: Point[] }[], harnessOf: Map<st
         turnStart: turnAt(lo, startFirst ? before : after),
         turnEnd: turnAt(hi, startFirst ? after : before),
         harness: harnessOf.get(r.w.id) ?? null,
+        width: wireWidth(r.w.gauge),
       };
     }),
   );
@@ -310,7 +315,7 @@ const groupedByHarness = (items: LaneSegment[]): LaneSegment[] => {
 };
 
 const laneSpacing = (a: LaneSegment, b: LaneSegment): number =>
-  (a.harness || b.harness) && groupOf(a) !== groupOf(b) ? WIRE_WIDTH + HARNESS_GAP : WIRE_WIDTH;
+  (a.width + b.width) / 2 + ((a.harness || b.harness) && groupOf(a) !== groupOf(b) ? HARNESS_GAP : 0);
 
 const assignLanes = (items: LaneSegment[]) => {
   const placed = groupedByHarness(items).reduce<Placed[]>((done, s) => {

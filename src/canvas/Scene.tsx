@@ -1,5 +1,6 @@
 import { useEffect, useRef } from 'preact/hooks';
 import type { Guide } from '../project/align.ts';
+import { wireWidth } from '../project/gauge.ts';
 import { colourHex, pinLabel } from '../project/project.ts';
 import type { Point, Project, Selection } from '../project/types.ts';
 import {
@@ -10,7 +11,6 @@ import {
   noteSize,
   pinPoint,
   segments,
-  WIRE_WIDTH,
   wireWarnings,
 } from '../routing/routing.ts';
 
@@ -21,7 +21,7 @@ type Props = {
   project: Project;
   selection: Selection;
   hover: Hover;
-  preview: { pts: Point[]; colour: string } | null;
+  preview: { pts: Point[]; colour: string; width: number } | null;
   marquee: Marquee;
   editingNote: string | null;
   onNoteCommit: (id: string, text: string) => void;
@@ -47,7 +47,10 @@ const NoteEditor = ({ text, onCommit }: { text: string; onCommit: (text: string)
   );
 };
 
-const PRINT_WARNING_WIDTH = 4.5;
+const LIT_EXTRA = 1.7;
+const PRINT_WARNING_EXTRA = 2.7;
+const WARNING_HALO_EXTRA = 7.2;
+const MIN_PREVIEW_WIDTH = 2.5;
 
 export const Scene = ({ project, selection, hover, preview, marquee, editingNote, onNoteCommit, print = false, guides = [] }: Props) => {
   const display = displayPaths(project);
@@ -77,11 +80,12 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
         const lit = selection.wires.includes(w.id) || hover?.wire === w.id || (hoveredBlock && (w.from.blockId === hoveredBlock || w.to?.blockId === hoveredBlock));
         const opacity = hoveredBlock && !lit ? 0.25 : 1;
         const warned = warnings.has(w.id);
-        const width = print && warned ? PRINT_WARNING_WIDTH : lit ? 3.5 : WIRE_WIDTH;
+        const gaugeWidth = wireWidth(w.gauge);
+        const width = gaugeWidth + (print && warned ? PRINT_WARNING_EXTRA : lit ? LIT_EXTRA : 0);
         const marker = print && warned ? harnessMidpoint(project, w) : null;
         return (
           <g key={w.id}>
-            {warned && !print && <polyline points={points(path)} fill="none" stroke="var(--warn)" stroke-width={9} stroke-dasharray="10 6" opacity={0.55} pointer-events="none" />}
+            {warned && !print && <polyline points={points(path)} fill="none" stroke="var(--warn)" stroke-width={gaugeWidth + WARNING_HALO_EXTRA} stroke-dasharray="10 6" opacity={0.55} pointer-events="none" />}
             <polyline points={points(path)} fill="none" stroke={colourHex(project, w.colours[0])} stroke-width={width} opacity={opacity} pointer-events="none" />
             {w.colours[1] && <polyline points={points(path)} fill="none" stroke={colourHex(project, w.colours[1])} stroke-width={width} stroke-dasharray="8 8" opacity={opacity} pointer-events="none" />}
             {marker && <text class="warning-mark" x={marker.x + 6} y={marker.y - 6}>!</text>}
@@ -180,7 +184,7 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
           pointer-events="none"
         />
       ))}
-      {preview && <polyline points={points(preview.pts)} fill="none" stroke={preview.colour} stroke-width={2.5} stroke-dasharray="6 4" pointer-events="none" />}
+      {preview && <polyline points={points(preview.pts)} fill="none" stroke={preview.colour} stroke-width={Math.max(MIN_PREVIEW_WIDTH, preview.width)} stroke-dasharray="6 4" pointer-events="none" />}
       {marquee && (
         <rect x={Math.min(marquee.a.x, marquee.b.x)} y={Math.min(marquee.a.y, marquee.b.y)} width={Math.abs(marquee.a.x - marquee.b.x)} height={Math.abs(marquee.a.y - marquee.b.y)} fill="#1f5fbf18" stroke="var(--accent)" stroke-dasharray="4 3" pointer-events="none" />
       )}

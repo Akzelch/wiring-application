@@ -40,6 +40,8 @@ test('a row reads Block, Label, Pin number and name, with colours spelled out', 
     from: 'J2 (Front ECU) : 3 GND',
     to: 'J10 : 1',
     colour: 'green/yellow',
+    gauge: '',
+    lengthMm: '',
     harness: '',
     fromZone: '',
     toZone: '',
@@ -70,6 +72,35 @@ test('rows carry the Harness and the Zone of each end', () => {
   );
   const [row] = fromToRows(project);
   assert.deepEqual([row.harness, row.fromZone, row.toZone], ['Main', 'Front', 'Rear']);
+});
+
+test('a row prints the Wire size and exactly the distance set between its Zones', () => {
+  const project = run(
+    base(),
+    { ...wire('p1', 'p1', ['red']), gauge: 1.5 } as Command,
+    { type: 'createZone', name: 'Front', x: 250, y: 250, w: 300, h: 400 },
+    { type: 'createZone', name: 'Rear', x: 850, y: 250, w: 300, h: 300 },
+    { type: 'setZoneDistance', zoneA: 'z2', zoneB: 'z1', mm: 2400 },
+  );
+  const [row] = fromToRows(project);
+  assert.deepEqual([row.gauge, row.lengthMm], ['1.5 mm² / AWG 16', '2400']);
+});
+
+test('the length is blank without a distance, and when overlapping Zones disagree', () => {
+  const zoned = run(
+    base(),
+    wire('p1', 'p1', ['red']),
+    { type: 'createZone', name: 'Front', x: 250, y: 250, w: 300, h: 400 },
+    { type: 'createZone', name: 'Rear', x: 850, y: 250, w: 300, h: 300 },
+  );
+  assert.equal(fromToRows(zoned)[0].lengthMm, '');
+  const overlapping = run(
+    zoned,
+    { type: 'createZone', name: 'Cab', x: 200, y: 200, w: 400, h: 500 },
+    { type: 'setZoneDistance', zoneA: 'z1', zoneB: 'z2', mm: 1000 },
+    { type: 'setZoneDistance', zoneA: 'z3', zoneB: 'z2', mm: 1200 },
+  );
+  assert.equal(fromToRows(overlapping)[0].lengthMm, '');
 });
 
 test('an unfinished Wire shows "unfinished" in To and is listed under Warnings', () => {

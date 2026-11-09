@@ -18,6 +18,7 @@ export type Block = {
   kicadLinked: boolean;
   x: number;
   y: number;
+  scale?: number;
   pins: Pin[];
 };
 
@@ -29,10 +30,12 @@ export type Wire = {
   to: WireEnd | null;
   corners: Point[];
   colours: string[];
+  gauge?: number;
 };
 
 export type Harness = { id: string; name: string; wireIds: string[]; arc: Point };
 export type Zone = { id: string; name: string; x: number; y: number; w: number; h: number };
+export type ZoneDistance = { zoneA: string; zoneB: string; mm: number };
 export type Note = { id: string; text: string; x: number; y: number };
 export type Colour = { name: string; hex: string };
 
@@ -42,6 +45,7 @@ export type Project = {
   wires: Wire[];
   harnesses: Harness[];
   zones: Zone[];
+  zoneDistances: ZoneDistance[];
   notes: Note[];
   customColours: Colour[];
 };

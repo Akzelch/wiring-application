@@ -1,12 +1,12 @@
 import { useState } from 'preact/hooks';
-import { makePins, nameTaken, pinFloor, resizedPins, SIDES, wiredPinIds } from '../project/project.ts';
+import { BLOCK_SCALE, makePins, nameTaken, pinFloor, resizedPins, SIDES, wiredPinIds } from '../project/project.ts';
 import type { Block, Pin, Project, Side } from '../project/types.ts';
 
 type Props = {
   project: Project;
   block: Block | null;
   defaultName: string;
-  onSubmit: (name: string, label: string, pins: Pin[]) => void;
+  onSubmit: (name: string, label: string, pins: Pin[], scale: number) => void;
   onCancel: () => void;
 };
 
@@ -16,6 +16,7 @@ export const BlockForm = ({ project, block, defaultName, onSubmit, onCancel }: P
   const [name, setName] = useState(block?.name ?? defaultName);
   const [label, setLabel] = useState(block?.label ?? '');
   const [pins, setPins] = useState<Pin[]>(block ? [...block.pins] : makePins({ left: 0, right: 4, top: 0, bottom: 0 }));
+  const [scale, setScale] = useState(String(block?.scale ?? 1));
 
   const taken = nameTaken(project, name, block?.id);
   const wired = block ? wiredPinIds(project, block.id) : [];
@@ -37,7 +38,7 @@ export const BlockForm = ({ project, block, defaultName, onSubmit, onCancel }: P
       <form
         onSubmit={e => {
           e.preventDefault();
-          if (!taken && name.trim()) onSubmit(name.trim(), label, pins);
+          if (!taken && name.trim()) onSubmit(name.trim(), label, pins, Number(scale));
         }}
       >
         <label>
@@ -48,6 +49,10 @@ export const BlockForm = ({ project, block, defaultName, onSubmit, onCancel }: P
         <label>
           Label
           <input value={label} onInput={e => setLabel(e.currentTarget.value)} />
+        </label>
+        <label>
+          Scale
+          <input type="number" required {...BLOCK_SCALE} value={scale} onInput={e => setScale(e.currentTarget.value)} />
         </label>
         {!block?.kicadLinked && (
           <div class="counts">

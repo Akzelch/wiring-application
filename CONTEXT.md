@@ -35,3 +35,15 @@ _Avoid_: Bundle, cable, loom
 **Zone**:
 A named rectangular region of the layout that groups Blocks by physical area, such as "Front lights" or "ECU".
 _Avoid_: Area, segment, section, group
+
+**Wire size**:
+The standard conductor cross-section of a Wire, shown in mm² with the equivalent AWG. A Wire may have none set.
+_Avoid_: Diameter, thickness
+
+**Zone distance**:
+The approximate length in millimetres given to a pair of Zones. It is printed as the length of every Wire running between them, with nothing added.
+_Avoid_: Route length, Wire length
+
+**Scale**:
+The factor, in half steps, that enlarges a Block and its Pin spacing so Pins stay on the grid.
+_Avoid_: Zoom, size

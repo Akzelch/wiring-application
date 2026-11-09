@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PrintView } from '../export/PrintView.tsx';
 import { checklist, mergeImport, type Connector, type ImportReport } from '../kicad/kicad.ts';
 import { alignedMove, type Guide } from '../project/align.ts';
+import { GAUGES, gaugeLabel, stepGauge, wireWidth } from '../project/gauge.ts';
 import {
   apply,
   colourHex,
@@ -16,6 +17,7 @@ import {
   serialize,
   startHistory,
   undo,
+  zoneDistance,
   type Clipboard,
   type Command,
   type History,
@@ -103,6 +105,7 @@ export const App = () => {
   const [form, setForm] = useState<Form>(null);
   const [clipboard, setClipboard] = useState<Clipboard | null>(null);
   const [colours, setColours] = useState<string[]>(['red']);
+  const [gauge, setGauge] = useState<number | undefined>(undefined);
   const [status, setStatus] = useState('');
   const [conflict, setConflict] = useState(false);
   const [customName, setCustomName] = useState('');
@@ -187,11 +190,26 @@ export const App = () => {
     }
   };
 
+  const applyGauge = (next: number | undefined) => {
+    setGauge(next);
+    if (selection.wires.length > 0) dispatch({ type: 'setWireGauge', wireIds: selection.wires, gauge: next });
+  };
+
+  const stepGauges = (step: 1 | -1) => {
+    if (selection.wires.length > 0) dispatch({ type: 'stepWireGauge', wireIds: selection.wires, step });
+    else setGauge(stepGauge(gauge, step));
+  };
+
+  const setDistance = (zoneA: string, zoneB: string, text: string) => {
+    const mm = Number(text);
+    dispatch({ type: 'setZoneDistance', zoneA, zoneB, mm: mm > 0 ? mm : undefined });
+  };
+
   const finishDraw = (current: Draw, to: WireEnd | null, corners: Point[]) => {
     dispatch(
       current.wireId
         ? { type: 'setWireRoute', wireId: current.wireId, to, corners }
-        : { type: 'addWire', from: current.from, to, corners, colours },
+        : { type: 'addWire', from: current.from, to, corners, colours, gauge },
     );
     setDraw(null);
   };
@@ -482,6 +500,9 @@ export const App = () => {
       );
     } else if (e.key === 'Delete') {
       deleteSelected();
+    } else if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      stepGauges(e.key === 'ArrowUp' ? 1 : -1);
     } else if (key === 'w') {
       if (hover?.pin && !draw) setDraw(startDraw(project, parsePin(hover.pin)));
       else if (!draw) setStatus('Hover a Pin, then press W.');
@@ -523,9 +544,13 @@ export const App = () => {
 
   const endPin = draw && hover?.pin && hover.pin !== `${draw.from.blockId}:${draw.from.pinId}` ? parsePin(hover.pin) : null;
   const preview = draw
-    ? { pts: previewDraw(project, draw, cursor, endPin), colour: colourHex(project, colours[0]) }
+    ? { pts: previewDraw(project, draw, cursor, endPin), colour: colourHex(project, colours[0]), width: wireWidth(gauge) }
     : null;
   const allColours = [...PALETTE, ...project.customColours];
+  const selectedGauges = [...new Set(project.wires.filter(w => selection.wires.includes(w.id)).map(w => w.gauge))];
+  const mixedGauges = selectedGauges.length > 1;
+  const shownGauge = selection.wires.length > 0 ? selectedGauges[0] : gauge;
+  const zonePairs = project.zones.flatMap((a, i) => project.zones.slice(i + 1).map(b => ({ a, b })));
 
   const commitNote = (id: string, text: string) => {
     setEditingNote(null);
@@ -595,6 +620,21 @@ export const App = () => {
             <option key={c.name} value={c.name}>{c.name}</option>
           ))}
         </select>
+        <h2>Wire size</h2>
+        <select value={mixedGauges ? 'mixed' : shownGauge ?? ''} onInput={e => applyGauge(e.currentTarget.value ? Number(e.currentTarget.value) : undefined)}>
+          {mixedGauges && <option value="mixed" disabled>Mixed</option>}
+          <option value="">Not set</option>
+          {GAUGES.map(g => (
+            <option key={g.mm2} value={g.mm2}>{gaugeLabel(g.mm2)}</option>
+          ))}
+        </select>
+        {zonePairs.length > 0 && <h2>Zone distances (mm)</h2>}
+        {zonePairs.map(({ a, b }) => (
+          <label class="distance" key={`${a.id}:${b.id}`}>
+            <span>{a.name} to {b.name}</span>
+            <input type="number" min={0} value={zoneDistance(project, a.id, b.id) ?? ''} onChange={e => setDistance(a.id, b.id, e.currentTarget.value)} />
+          </label>
+        ))}
         <h2>Custom colour</h2>
         <div class="row">
           <input placeholder="Name" size={10} value={customName} onInput={e => setCustomName(e.currentTarget.value)} />
@@ -621,6 +661,7 @@ export const App = () => {
           <dt>R</dt><dd>Rotate</dd>
           <dt>H</dt><dd>Harness from Wires</dd>
           <dt>1-9</dt><dd>Wire colour</dd>
+          <dt>Up, Down</dt><dd>Wire size</dd>
           <dt>Shift+drag</dt><dd>Box select</dd>
           <dt>Shift+drag item</dt><dd>Align with other items</dd>
           <dt>Shift+drag Zone</dt><dd>Also moves its contents</dd>
@@ -639,11 +680,11 @@ export const App = () => {
           block={form.block}
           defaultName={nextFreeName(project.blocks.map(b => b.name), 'J0')}
           onCancel={() => setForm(null)}
-          onSubmit={(name, label, pins) => {
+          onSubmit={(name, label, pins, scale) => {
             dispatch(
               form.block
-                ? { type: 'updateBlock', blockId: form.block.id, name, label, pins }
-                : { type: 'createBlock', name, label, at: viewCentre(), pins },
+                ? { type: 'updateBlock', blockId: form.block.id, name, label, pins, scale }
+                : { type: 'createBlock', name, label, at: viewCentre(), pins, scale },
             );
             setForm(null);
           }}

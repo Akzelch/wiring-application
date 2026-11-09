@@ -1,11 +1,14 @@
-import { naturalCompare } from '../project/project.ts';
-import type { Point, Project, Wire, WireEnd } from '../project/types.ts';
+import { gaugeLabel } from '../project/gauge.ts';
+import { naturalCompare, zoneDistance } from '../project/project.ts';
+import type { Point, Project, Wire, WireEnd, Zone } from '../project/types.ts';
 import { blockCentre, blockSize, clean, harnessArc, inZone, noteSize, onLeftoverPin, passesOverPin, wirePath } from '../routing/routing.ts';
 
 export type FromToRow = {
   from: string;
   to: string;
   colour: string;
+  gauge: string;
+  lengthMm: string;
   harness: string;
   fromZone: string;
   toZone: string;
@@ -26,10 +29,21 @@ const endText = (project: Project, end: WireEnd | null): string => {
   return `${name} : ${pinName ? `${pin.number} ${pinName}` : pin.number}`;
 };
 
-const zoneText = (project: Project, end: WireEnd | null): string => {
-  if (!end) return '';
+const zonesAt = (project: Project, end: WireEnd | null): Zone[] => {
+  if (!end) return [];
   const centre = blockCentre(endOf(project, end).block);
-  return project.zones.filter(z => inZone(z, centre)).map(z => z.name).join(', ');
+  return project.zones.filter(z => inZone(z, centre));
+};
+
+const zoneText = (project: Project, end: WireEnd | null): string =>
+  zonesAt(project, end).map(z => z.name).join(', ');
+
+// Overlapping Zones can offer several distances; a length is only printed when they agree.
+const lengthText = (project: Project, w: Wire): string => {
+  const distances = zonesAt(project, w.from).flatMap(a =>
+    zonesAt(project, w.to).flatMap(b => zoneDistance(project, a.id, b.id) ?? []),
+  );
+  return new Set(distances).size === 1 ? String(distances[0]) : '';
 };
 
 const sortedWires = (project: Project): Wire[] => {
@@ -48,6 +62,8 @@ export const fromToRows = (project: Project): FromToRow[] =>
     from: endText(project, w.from),
     to: endText(project, w.to),
     colour: w.colours.join('/'),
+    gauge: gaugeLabel(w.gauge),
+    lengthMm: lengthText(project, w),
     harness: project.harnesses.find(h => h.wireIds.includes(w.id))?.name ?? '',
     fromZone: zoneText(project, w.from),
     toZone: zoneText(project, w.to),

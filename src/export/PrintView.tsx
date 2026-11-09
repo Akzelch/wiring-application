@@ -34,6 +34,8 @@ export const PrintView = ({ project }: { project: Project }) => {
               <th>From</th>
               <th>To</th>
               <th>Colour</th>
+              <th>Size</th>
+              <th>Length (mm)</th>
               <th>Harness</th>
               <th>From Zone</th>
               <th>To Zone</th>
@@ -45,6 +47,8 @@ export const PrintView = ({ project }: { project: Project }) => {
                 <td>{r.from}</td>
                 <td>{r.to}</td>
                 <td>{r.colour}</td>
+                <td>{r.gauge}</td>
+                <td>{r.lengthMm}</td>
                 <td>{r.harness}</td>
                 <td>{r.fromZone}</td>
                 <td>{r.toZone}</td>

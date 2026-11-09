@@ -12,7 +12,8 @@ import {
   snap,
   wirePath,
 } from '../routing/routing.ts';
-import type { Block, Colour, Note, Pin, Point, Project, Selection, Side, Wire, WireEnd, Zone } from './types.ts';
+import { stepGauge } from './gauge.ts';
+import type { Block, Colour, Note, Pin, Point, Project, Selection, Side, Wire, WireEnd, Zone, ZoneDistance } from './types.ts';
 
 export const PALETTE: Colour[] = [
   { name: 'black', hex: '#222222' },
@@ -37,9 +38,12 @@ export const emptyProject = (): Project => ({
   wires: [],
   harnesses: [],
   zones: [],
+  zoneDistances: [],
   notes: [],
   customColours: [],
 });
+
+export const BLOCK_SCALE = { min: 0.5, max: 4, step: 0.5 };
 
 export const emptySelection = (): Selection => ({ blocks: [], wires: [], notes: [], zones: [], harnesses: [] });
 
@@ -79,15 +83,18 @@ export const nextFreeName = (used: string[], name: string): string => {
 export type Clipboard = { blocks: Block[]; wires: Wire[]; notes: Note[] };
 
 export type Command =
-  | { type: 'createBlock'; name: string; label: string; at: Point; pins: Pin[] }
-  | { type: 'updateBlock'; blockId: string; name: string; label: string; pins: Pin[] }
+  | { type: 'createBlock'; name: string; label: string; at: Point; pins: Pin[]; scale?: number }
+  | { type: 'updateBlock'; blockId: string; name: string; label: string; pins: Pin[]; scale?: number }
   | { type: 'rotateBlocks'; blockIds: string[] }
   | { type: 'moveItems'; selection: Selection; delta: Point; zoneOnly?: boolean }
   | { type: 'deleteItems'; selection: Selection }
-  | { type: 'addWire'; from: WireEnd; to: WireEnd | null; corners: Point[]; colours: string[] }
+  | { type: 'addWire'; from: WireEnd; to: WireEnd | null; corners: Point[]; colours: string[]; gauge?: number }
   | { type: 'setWireRoute'; wireId: string; to: WireEnd | null; corners: Point[] }
   | { type: 'slideSegment'; wireId: string; index: number; delta: Point }
   | { type: 'setWireColours'; wireIds: string[]; base?: string; second?: string | null }
+  | { type: 'setWireGauge'; wireIds: string[]; gauge?: number }
+  | { type: 'stepWireGauge'; wireIds: string[]; step: 1 | -1 }
+  | { type: 'setZoneDistance'; zoneA: string; zoneB: string; mm?: number }
   | { type: 'addCustomColour'; colour: Colour }
   | { type: 'createHarness'; name: string; wireIds: string[] }
   | { type: 'renameHarness'; harnessId: string; name: string }
@@ -145,6 +152,15 @@ export const resizedPins = (pins: Pin[], counts: Record<Side, number>, wired: st
 
 const replaced = <T extends { id: string }>(items: T[], id: string, change: (item: T) => T): T[] =>
   items.map(i => (i.id === id ? change(i) : i));
+
+const withGauge = ({ gauge: _gauge, ...wire }: Wire, gauge: number | undefined): Wire =>
+  gauge === undefined ? wire : { ...wire, gauge };
+
+const isPair = (d: ZoneDistance, a: string, b: string) =>
+  (d.zoneA === a && d.zoneB === b) || (d.zoneA === b && d.zoneB === a);
+
+export const zoneDistance = (project: Project, a: string, b: string): number | undefined =>
+  project.zoneDistances.find(d => isPair(d, a, b))?.mm;
 
 const withFollowedWires = (before: Project, after: Project): Project => ({
   ...after,
@@ -211,6 +227,7 @@ const deleteItems = (project: Project, s: Selection): Project => {
       wires,
       notes: project.notes.filter(n => !s.notes.includes(n.id)),
       zones: project.zones.filter(z => !s.zones.includes(z.id)),
+      zoneDistances: project.zoneDistances.filter(d => !s.zones.includes(d.zoneA) && !s.zones.includes(d.zoneB)),
       harnesses: project.harnesses.filter(h => !s.harnesses.includes(h.id)),
     },
     id => liveWires.has(id),
@@ -271,6 +288,7 @@ export const apply = (project: Project, command: Command): Project => {
         kicadLinked: false,
         x: command.at.x,
         y: command.at.y,
+        ...(command.scale === undefined ? {} : { scale: command.scale }),
         pins: normaliseOrders(command.pins),
       };
       return { ...project, blocks: [...project.blocks, block] };
@@ -283,6 +301,7 @@ export const apply = (project: Project, command: Command): Project => {
           ...b,
           name: b.kicadLinked ? b.name : command.name,
           label: command.label,
+          ...(command.scale === undefined ? {} : { scale: command.scale }),
           pins: normaliseOrders(command.pins),
         })),
       });
@@ -304,7 +323,7 @@ export const apply = (project: Project, command: Command): Project => {
         corners: command.corners,
         colours: command.colours,
       };
-      return { ...project, wires: [...project.wires, wire] };
+      return { ...project, wires: [...project.wires, withGauge(wire, command.gauge)] };
     }
     case 'setWireRoute':
       return {
@@ -327,6 +346,21 @@ export const apply = (project: Project, command: Command): Project => {
           return { ...w, colours: second ? [base, second] : [base] };
         }),
       };
+    case 'setWireGauge':
+      return {
+        ...project,
+        wires: project.wires.map(w => (command.wireIds.includes(w.id) ? withGauge(w, command.gauge) : w)),
+      };
+    case 'stepWireGauge':
+      return {
+        ...project,
+        wires: project.wires.map(w => (command.wireIds.includes(w.id) ? withGauge(w, stepGauge(w.gauge, command.step)) : w)),
+      };
+    case 'setZoneDistance': {
+      const { zoneA, zoneB, mm } = command;
+      const others = project.zoneDistances.filter(d => !isPair(d, zoneA, zoneB));
+      return { ...project, zoneDistances: mm === undefined ? others : [...others, { zoneA, zoneB, mm }] };
+    }
     case 'addCustomColour':
       return [...PALETTE, ...project.customColours].some(c => c.name === command.colour.name)
         ? project
@@ -409,6 +443,9 @@ export const serialize = (project: Project): string =>
         wireIds: [...h.wireIds].sort((a, b) => numberOf(a) - numberOf(b)),
       })),
       zones: byId(project.zones),
+      zoneDistances: [...project.zoneDistances].sort(
+        (a, b) => numberOf(a.zoneA) - numberOf(b.zoneA) || numberOf(a.zoneB) - numberOf(b.zoneB),
+      ),
       notes: byId(project.notes),
       customColours: [...project.customColours].sort((a, b) => a.name.localeCompare(b.name)),
     },
@@ -416,7 +453,8 @@ export const serialize = (project: Project): string =>
     2,
   )}\n`;
 
-export const parseProject = (text: string): Project => (text.trim() === '' ? emptyProject() : JSON.parse(text));
+export const parseProject = (text: string): Project =>
+  text.trim() === '' ? emptyProject() : { ...emptyProject(), ...JSON.parse(text) };
 
 export type History = { past: Project[]; present: Project; future: Project[] };
 
