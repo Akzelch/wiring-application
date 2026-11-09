@@ -78,7 +78,7 @@ export type Command =
   | { type: 'createBlock'; name: string; label: string; at: Point; pins: Pin[] }
   | { type: 'updateBlock'; blockId: string; name: string; label: string; pins: Pin[] }
   | { type: 'rotateBlocks'; blockIds: string[] }
-  | { type: 'moveItems'; selection: Selection; delta: Point }
+  | { type: 'moveItems'; selection: Selection; delta: Point; zoneOnly?: boolean }
   | { type: 'deleteItems'; selection: Selection }
   | { type: 'addWire'; from: WireEnd; to: WireEnd | null; corners: Point[]; colours: string[] }
   | { type: 'setWireRoute'; wireId: string; to: WireEnd | null; corners: Point[] }
@@ -132,8 +132,8 @@ const rotateBlock = (b: Block): Block => {
   return { ...rotated, x: snap(centre.x - w / 2), y: snap(centre.y - h / 2) };
 };
 
-const moveItems = (project: Project, selection: Selection, delta: Point): Project => {
-  const zones = project.zones.filter(z => selection.zones.includes(z.id));
+const moveItems = (project: Project, selection: Selection, delta: Point, zoneOnly: boolean): Project => {
+  const zones = zoneOnly ? [] : project.zones.filter(z => selection.zones.includes(z.id));
   const blockIds = new Set([
     ...selection.blocks,
     ...project.blocks.filter(b => zones.some(z => inZone(z, blockCentre(b)))).map(b => b.id),
@@ -252,7 +252,7 @@ export const apply = (project: Project, command: Command): Project => {
         blocks: project.blocks.map(b => (command.blockIds.includes(b.id) ? rotateBlock(b) : b)),
       });
     case 'moveItems':
-      return moveItems(project, command.selection, command.delta);
+      return moveItems(project, command.selection, command.delta, command.zoneOnly ?? false);
     case 'deleteItems':
       return deleteItems(project, command.selection);
     case 'addWire': {

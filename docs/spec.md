@@ -37,7 +37,7 @@ Rewrite rather than reuse the [canvas prototype](https://github.com/Akzelch/wiri
 ## Layout objects
 
 - **Blocks**: at most about 15. Created from a form with a name and Pin count per side; Pins are numbered by default, renamable and movable between sides in that form. Names are unique: the form refuses a duplicate. Optional Label. A Pin displays its user name, else its Net, else its number. `R` turns a Block 90° clockwise about its centre; Pins move with their sides, text stays upright, and Wires follow the drag rules below.
-- **Zones**: labelled, resizable rectangles behind the Blocks. A Block or Note is in a Zone when its centre is inside. Dragging a Zone carries them. A new Zone surrounds the selected Blocks and Notes with a margin; with none selected it is a default rectangle in the middle of the view.
+- **Zones**: labelled, resizable rectangles behind the Blocks. A Block or Note is in a Zone when its centre is inside. Dragging a Zone moves only the Zone; holding `Shift` while dragging carries them. A new Zone surrounds the selected Blocks and Notes with a margin; with none selected it is a default rectangle in the middle of the view.
 - **Notes**: `N` then a click places one; double-click edits. Multi-line, box grows to fit, no formatting. Drag, multi-select, copy/paste, delete and undo work as for Blocks; no rotation. Drawn above Wires and Zones, with no effect on routing.
 - **Harnesses**: a named set of Wires, drawn as one draggable arc across them with its name beside it. A Wire is in at most one Harness. The arc is only a marker.
 

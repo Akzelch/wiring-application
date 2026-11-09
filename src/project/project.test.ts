@@ -207,6 +207,24 @@ test('dragging a Zone carries the Blocks and Notes whose centres are inside', ()
   assert.equal(moved.notes[1].x, 1500);
 });
 
+test('a Zone-only drag moves the Zone and leaves everything inside it, even with Zones overlapping', () => {
+  const start = run(
+    twoBlocks(),
+    { type: 'createZone', name: 'Front', x: 250, y: 250, w: 300, h: 300 },
+    { type: 'createZone', name: 'Overlap', x: 300, y: 280, w: 300, h: 300 },
+    { type: 'createNote', text: 'hi', at: { x: 400, y: 500 } },
+  );
+  const moved = apply(start, {
+    type: 'moveItems',
+    selection: { ...emptySelection(), zones: ['z2'] },
+    delta: { x: 500, y: 0 },
+    zoneOnly: true,
+  });
+  assert.deepEqual(moved.zones.map(z => z.x), [250, 800]);
+  assert.deepEqual(moved.blocks, start.blocks);
+  assert.deepEqual(moved.notes, start.notes);
+});
+
 test('a Zone created around a selection surrounds its Blocks and Notes with a margin', () => {
   const start = run(twoBlocks(), { type: 'createNote', text: 'hi', at: { x: 500, y: 500 } });
   const selection = { ...emptySelection(), blocks: ['b1'], notes: ['n1'] };

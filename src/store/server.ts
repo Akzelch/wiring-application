@@ -34,6 +34,11 @@ const buildServer = (store: FileStore, assets: Assets): Server => {
       if (request.url === '/api/kicad/connectors' && request.method === 'POST') {
         return json(200, readConnectors(await readBody(request)));
       }
+      // DELETE, because a browser preflights it and so other websites cannot stop the app.
+      if (request.url === '/api/server' && request.method === 'DELETE') {
+        response.once('finish', () => process.exit(0));
+        return json(200, { ok: true });
+      }
       const file = files[request.url ?? ''];
       if (file && request.method === 'GET') return send(200, file[1], await readFile(file[0]));
       send(404, 'text/plain', 'Not found');

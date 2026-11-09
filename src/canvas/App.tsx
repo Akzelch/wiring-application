@@ -106,6 +106,7 @@ export const App = () => {
   const [conflict, setConflict] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customHex, setCustomHex] = useState('#00aaaa');
+  const [stopped, setStopped] = useState(false);
   const [importing, setImporting] = useState<Connector[] | null>(null);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
 
@@ -313,7 +314,7 @@ export const App = () => {
 
     if (gesture.kind === 'move') {
       setGesture({ ...gesture, moved: gesture.moved || moved });
-      setDraft(apply(gesture.base, { type: 'moveItems', selection: gesture.selection, delta }));
+      setDraft(apply(gesture.base, { type: 'moveItems', selection: gesture.selection, delta, zoneOnly: !e.shiftKey }));
     } else if (gesture.kind === 'slide') {
       setGesture({ ...gesture, moved: gesture.moved || moved });
       const next = apply(gesture.base, { type: 'slideSegment', wireId: gesture.wireId, index: gesture.index, delta });
@@ -404,6 +405,13 @@ export const App = () => {
     }
     const c = viewCentre();
     dispatch({ type: 'createZone', name, x: c.x - 200, y: c.y - 150, w: 400, h: 300 });
+  };
+
+  const quit = async () => {
+    if (!present) return;
+    await saveNow(present);
+    await fetch('/api/server', { method: 'DELETE' });
+    setStopped(true);
   };
 
   const readBoard = async (file: File) => {
@@ -498,6 +506,9 @@ export const App = () => {
     return () => svg.removeEventListener('wheel', onWheel);
   });
 
+  if (stopped) {
+    return <p>{conflict ? 'The app has stopped. Your latest edits were not saved, because the file changed on disk.' : 'The app has stopped and your work is saved. You can close this tab.'}</p>;
+  }
   if (loadError) return <p class="error">Could not load the project file: {loadError}</p>;
   if (!project) return <p>Loading</p>;
 
@@ -557,6 +568,10 @@ export const App = () => {
         <div class="row">
           <button onClick={() => window.print()}>Print to PDF</button>
         </div>
+        <h2>App</h2>
+        <div class="row">
+          <button onClick={() => void quit()}>Quit</button>
+        </div>
         <h2>Colour</h2>
         <div class="row">
           {allColours.map(c => (
@@ -597,6 +612,7 @@ export const App = () => {
           <dt>H</dt><dd>Harness from Wires</dd>
           <dt>1-9</dt><dd>Wire colour</dd>
           <dt>Shift+drag</dt><dd>Box select</dd>
+          <dt>Shift+drag Zone</dt><dd>Move it with its contents</dd>
           <dt>Shift+click</dt><dd>Add to selection</dd>
           <dt>Double-click</dt><dd>Edit item</dd>
           <dt>Drag empty</dt><dd>Pan; scroll zooms</dd>
