@@ -9,14 +9,16 @@ import {
   emptySelection,
   makePins,
   parseProject,
+  pinFloor,
   pinLabel,
   redo,
+  resizedPins,
   serialize,
   startHistory,
   undo,
   type Command,
 } from './project.ts';
-import type { Project } from './types.ts';
+import type { Pin, Project } from './types.ts';
 
 const run = (project: Project, ...commands: Command[]): Project => commands.reduce(apply, project);
 
@@ -228,6 +230,36 @@ test('Wires with no Harness still touch', () => {
   const start = bundleOfThree();
   const ys = ['w1', 'w2', 'w3'].map(id => laneY(start, id)).sort((a, b) => a - b);
   assert.ok(Math.abs(ys[1] - ys[0] - WIRE_WIDTH) < 1e-9 && Math.abs(ys[2] - ys[1] - WIRE_WIDTH) < 1e-9);
+});
+
+const editPins = (project: Project, pins: Pin[]) =>
+  apply(project, { type: 'updateBlock', blockId: 'b1', name: 'J1', label: '', pins });
+
+test('adding Pins to a placed Block keeps its Pins and Wires and numbers the new ones', () => {
+  const start = straight(twoBlocks());
+  const before = start.blocks[0].pins;
+  const edited = editPins(start, resizedPins(before, counts(0, 6), ['p1']));
+  const pins = edited.blocks[0].pins;
+  assert.deepEqual(pins.slice(0, 4), before);
+  assert.deepEqual(pins.slice(4).map(p => [p.id, p.number, p.side, p.order]), [['p5', '5', 'right', 4], ['p6', '6', 'right', 5]]);
+  assert.deepEqual(wirePath(edited, edited.wires[0])[0], { x: 400, y: 320 });
+});
+
+test('Pins can be added on a side that had none', () => {
+  const pins = resizedPins(twoBlocks().blocks[0].pins, counts(1, 4, 2), []);
+  assert.deepEqual(pins.slice(4).map(p => [p.number, p.side, p.order]), [['5', 'left', 0], ['6', 'top', 0], ['7', 'top', 1]]);
+});
+
+test('removing Pins takes unwired ones from the end and never a wired Pin', () => {
+  const before = twoBlocks().blocks[0].pins;
+  assert.equal(pinFloor(before, 'right', ['p2']), 2);
+  assert.deepEqual(resizedPins(before, counts(0, 3), []).map(p => p.id), ['p1', 'p2', 'p3']);
+  assert.deepEqual(resizedPins(before, counts(0, 0), ['p2']).map(p => p.id), ['p1', 'p2']);
+});
+
+test('editing a rotated Block keeps its Pin order', () => {
+  const rotated = apply(twoBlocks(), { type: 'rotateBlocks', blockIds: ['b1'] });
+  assert.deepEqual(editPins(rotated, rotated.blocks[0].pins).blocks[0].pins, rotated.blocks[0].pins);
 });
 
 test('deleting a Block removes its Wires and empties Harnesses', () => {

@@ -1,8 +1,6 @@
 import { useState } from 'preact/hooks';
-import { makePins, nameTaken } from '../project/project.ts';
+import { makePins, nameTaken, pinFloor, resizedPins, SIDES, wiredPinIds } from '../project/project.ts';
 import type { Block, Pin, Project, Side } from '../project/types.ts';
-
-const SIDES: Side[] = ['left', 'right', 'top', 'bottom'];
 
 type Props = {
   project: Project;
@@ -12,17 +10,24 @@ type Props = {
   onCancel: () => void;
 };
 
+const countOn = (pins: Pin[], side: Side) => pins.filter(p => p.side === side).length;
+
 export const BlockForm = ({ project, block, defaultName, onSubmit, onCancel }: Props) => {
   const [name, setName] = useState(block?.name ?? defaultName);
   const [label, setLabel] = useState(block?.label ?? '');
-  const [counts, setCounts] = useState<Record<Side, number>>({ left: 0, right: 4, top: 0, bottom: 0 });
   const [pins, setPins] = useState<Pin[]>(block ? [...block.pins] : makePins({ left: 0, right: 4, top: 0, bottom: 0 }));
 
   const taken = nameTaken(project, name, block?.id);
+  const wired = block ? wiredPinIds(project, block.id) : [];
   const setCount = (side: Side, value: number) => {
-    const next = { ...counts, [side]: Math.max(0, value) };
-    setCounts(next);
-    setPins(makePins(next));
+    const counts = {
+      left: countOn(pins, 'left'),
+      right: countOn(pins, 'right'),
+      top: countOn(pins, 'top'),
+      bottom: countOn(pins, 'bottom'),
+      [side]: Math.max(0, value),
+    };
+    setPins(block ? resizedPins(pins, counts, wired) : makePins(counts));
   };
   const changePin = (id: string, change: Partial<Pin>) =>
     setPins(pins.map(p => (p.id === id ? { ...p, ...change } : p)));
@@ -44,22 +49,22 @@ export const BlockForm = ({ project, block, defaultName, onSubmit, onCancel }: P
           Label
           <input value={label} onInput={e => setLabel(e.currentTarget.value)} />
         </label>
-        {!block && (
+        {!block?.kicadLinked && (
           <div class="counts">
             {SIDES.map(side => (
               <label key={side}>
                 {side}
                 <input
                   type="number"
-                  min="0"
-                  value={counts[side]}
+                  min={pinFloor(pins, side, wired)}
+                  value={countOn(pins, side)}
                   onInput={e => setCount(side, Number(e.currentTarget.value))}
                 />
               </label>
             ))}
           </div>
         )}
-        <div>
+        <div class="pin-list">
           {pins.map(p => (
             <div class="pin-row" key={p.id}>
               <span>{p.number}</span>

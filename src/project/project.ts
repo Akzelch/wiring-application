@@ -48,9 +48,13 @@ export const colourHex = (project: Project, name: string): string =>
 
 export const pinLabel = (p: Pin): string => p.userName || p.net || p.number;
 
+export const SIDES: Side[] = ['left', 'right', 'top', 'bottom'];
+
+export const wiredPinIds = (project: Project, blockId: string): string[] =>
+  project.wires.flatMap(w => [w.from, ...(w.to ? [w.to] : [])]).filter(end => end.blockId === blockId).map(end => end.pinId);
+
 export const makePins = (counts: Record<Side, number>): Pin[] => {
-  const sides: Side[] = ['left', 'right', 'top', 'bottom'];
-  const slots = sides.flatMap(side => Array.from({ length: counts[side] }, (_, order) => ({ side, order })));
+  const slots = SIDES.flatMap(side => Array.from({ length: counts[side] }, (_, order) => ({ side, order })));
   return slots.map(({ side, order }, i) => ({
     id: `p${i + 1}`,
     number: String(i + 1),
@@ -104,8 +108,39 @@ export const naturalCompare = (a: string, b: string): number => a.localeCompare(
 
 const normaliseOrders = (pins: Pin[]): Pin[] => {
   const orderInSide = (pin: Pin, index: number) =>
-    pins.slice(0, index).filter(p => p.side === pin.side).length;
+    pins.filter((p, i) => p.side === pin.side && (p.order < pin.order || (p.order === pin.order && i < index))).length;
   return pins.map((p, i) => ({ ...p, order: orderInSide(p, i) }));
+};
+
+const sideInOrder = (pins: Pin[], side: Side): Pin[] =>
+  pins.filter(p => p.side === side).sort((a, b) => a.order - b.order);
+
+export const pinFloor = (pins: Pin[], side: Side, wired: string[]): number =>
+  sideInOrder(pins, side).reduce((floor, p, i) => (wired.includes(p.id) ? i + 1 : floor), 0);
+
+const nextPinNumber = (pins: Pin[]): string => String(Math.max(0, ...pins.map(p => Number(p.number) || 0)) + 1);
+
+const addPin = (pins: Pin[], side: Side): Pin[] => [
+  ...pins,
+  {
+    id: nextId('p', pins),
+    number: nextPinNumber(pins),
+    net: '',
+    userName: '',
+    side,
+    order: Math.max(-1, ...pins.filter(p => p.side === side).map(p => p.order)) + 1,
+  },
+];
+
+export const resizedPins = (pins: Pin[], counts: Record<Side, number>, wired: string[]): Pin[] => {
+  const keptIds = SIDES.flatMap(side =>
+    sideInOrder(pins, side).slice(0, Math.max(counts[side], pinFloor(pins, side, wired))).map(p => p.id),
+  );
+  const kept = pins.filter(p => keptIds.includes(p.id));
+  return SIDES.reduce((all, side) => {
+    const missing = Math.max(0, counts[side] - all.filter(p => p.side === side).length);
+    return Array.from({ length: missing }).reduce<Pin[]>(current => addPin(current, side), all);
+  }, kept);
 };
 
 const replaced = <T extends { id: string }>(items: T[], id: string, change: (item: T) => T): T[] =>
