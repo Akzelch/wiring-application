@@ -32,7 +32,7 @@ test('setting a size applies to the chosen Wires and clearing removes it', () =>
 
 test('stepping moves each chosen Wire from its own size', () => {
   const stepped = run(wired(), { type: 'stepWireGauge', wireIds: ['w1', 'w2'], step: 1 });
-  assert.deepEqual(stepped.wires.map(w => w.gauge), [2.5, 0.14]);
+  assert.deepEqual(stepped.wires.map(w => w.gauge), [2.5, 0.5]);
 });
 
 test('overlapping Wires of different sizes are drawn exactly touching', () => {

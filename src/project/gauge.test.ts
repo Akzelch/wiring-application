@@ -8,12 +8,12 @@ test('each size is drawn wider than the one below it', () => {
 });
 
 test('stepping walks the list, starts from not set, and stops at the ends', () => {
-  assert.equal(stepGauge(undefined, 1), 0.14);
+  assert.equal(stepGauge(undefined, 1), 0.5);
   assert.equal(stepGauge(0.5, 1), 0.75);
   assert.equal(stepGauge(0.75, -1), 0.5);
-  assert.equal(stepGauge(0.14, -1), undefined);
+  assert.equal(stepGauge(0.5, -1), undefined);
   assert.equal(stepGauge(undefined, -1), undefined);
-  assert.equal(stepGauge(50, 1), 50);
+  assert.equal(stepGauge(10, 1), 10);
 });
 
 test('a label gives both mm² and AWG, and is empty when not set', () => {
