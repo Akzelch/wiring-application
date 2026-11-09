@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { existsSync, readFileSync } from 'node:fs';
 import { test } from 'node:test';
 import { apply, copyItems, emptyProject, emptySelection, makePins, type Command } from '../project/project.ts';
-import type { Project } from '../project/types.ts';
+import type { Point, Project } from '../project/types.ts';
 import { pinPoint, wireWarnings } from '../routing/routing.ts';
 import { checklist, mergeImport, readConnectors, type Connector } from './kicad.ts';
 
@@ -204,6 +204,44 @@ test('a leftover Pin that returns to the board is no longer a warning', () => {
   assert.equal('leftover' in project.blocks[0].pins.find(p => p.number === '2')!, false);
   assert.deepEqual([...wireWarnings(project)], []);
   assert.deepEqual(report.orphanedWires, []);
+});
+
+const shiftingPair = (from: 'J1' | 'J2', corners: Point[], finished = true) => {
+  const start = imported(connector('J1', ['1', ''], ['2', ''], ['3', '']), connector('J2', ['1', '']));
+  const [j1, j2] = start.blocks;
+  const placed = {
+    ...start,
+    blocks: [
+      { ...j1, x: 500, y: 40 },
+      { ...j2, x: 100, y: 40, pins: j2.pins.map(p => ({ ...p, side: 'right' as const })) },
+    ],
+  };
+  const a = { blockId: j1.id, pinId: j1.pins[2].id };
+  const b = { blockId: j2.id, pinId: j2.pins[0].id };
+  return apply(placed, {
+    type: 'addWire',
+    from: from === 'J1' ? a : b,
+    to: finished ? (from === 'J1' ? b : a) : null,
+    corners,
+    colours: ['red'],
+  });
+};
+const closeUpJ1 = (project: Project) =>
+  mergeImport(project, [connector('J1', ['2', ''], ['3', ''])], ['J1']).project.wires[0].corners;
+
+test('a Pin closing up moves the corner next to it and adds no bend', () => {
+  const corners = [{ x: 300, y: 100 }, { x: 300, y: 60 }];
+  assert.deepEqual(closeUpJ1(shiftingPair('J1', corners)), [{ x: 300, y: 80 }, { x: 300, y: 60 }]);
+});
+
+test('the same holds when the shifting Pin is the end of the Wire', () => {
+  const corners = [{ x: 300, y: 60 }, { x: 300, y: 100 }];
+  assert.deepEqual(closeUpJ1(shiftingPair('J2', corners)), [{ x: 300, y: 60 }, { x: 300, y: 80 }]);
+});
+
+test('an unfinished Wire keeps its loose end when its Pin closes up', () => {
+  const corners = [{ x: 300, y: 100 }, { x: 300, y: 300 }];
+  assert.deepEqual(closeUpJ1(shiftingPair('J1', corners, false)), [{ x: 300, y: 80 }, { x: 300, y: 300 }]);
 });
 
 test('a pasted Block does not inherit leftover Pins, since it can never be re-imported', () => {
