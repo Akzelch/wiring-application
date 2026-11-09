@@ -1,6 +1,6 @@
 import { naturalCompare } from '../project/project.ts';
 import type { Point, Project, Wire, WireEnd } from '../project/types.ts';
-import { blockCentre, blockSize, clean, inZone, noteSize, onLeftoverPin, passesOverPin, wirePath } from '../routing/routing.ts';
+import { blockCentre, blockSize, clean, harnessArc, inZone, noteSize, onLeftoverPin, passesOverPin, wirePath } from '../routing/routing.ts';
 
 export type FromToRow = {
   from: string;
@@ -73,7 +73,7 @@ export const layoutBounds = (project: Project): { x: number; y: number; w: numbe
     ...project.notes.flatMap(n => box(n.x, n.y, noteSize(n).w, noteSize(n).h)),
     ...project.zones.flatMap(z => box(z.x, z.y, z.w, z.h)),
     ...project.wires.flatMap(w => wirePath(project, w)),
-    ...project.harnesses.map(h => h.arc),
+    ...project.harnesses.map(h => harnessArc(project, h).name),
   ];
   if (points.length === 0) return EMPTY_BOUNDS;
   const x = Math.min(...points.map(p => p.x)) - MARGIN;

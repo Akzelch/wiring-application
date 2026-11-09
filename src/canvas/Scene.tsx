@@ -153,14 +153,14 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
       })}
 
       {project.harnesses.map(h => {
-        const { start, control, end } = harnessArc(project, h);
+        const { start, control, end, name } = harnessArc(project, h);
         const selected = selection.harnesses.includes(h.id);
         const d = `M ${start.x} ${start.y} Q ${control.x} ${control.y} ${end.x} ${end.y}`;
         return (
           <g key={h.id}>
             <path d={d} fill="none" stroke={selected ? 'var(--accent)' : '#333'} stroke-width={2} pointer-events="none" />
             <path data-item={`harnesses:${h.id}`} d={d} fill="none" stroke="transparent" stroke-width={12} style="cursor:move" />
-            <text class="harness-name" x={h.arc.x + 10} y={h.arc.y - 8}>{h.name}</text>
+            <text class="harness-name" x={name.x + 10} y={name.y - 8}>{h.name}</text>
           </g>
         );
       })}

@@ -341,18 +341,19 @@ export const harnessMidpoint = (project: Project, wire: Wire): Point => {
   return { x: snap((longest.a.x + longest.b.x) / 2), y: snap((longest.a.y + longest.b.y) / 2) };
 };
 
-export const harnessArc = (project: Project, h: Harness): { start: Point; control: Point; end: Point } => {
+export const harnessArc = (project: Project, h: Harness): { start: Point; control: Point; end: Point; name: Point } => {
   const paths = displayPaths(project);
   const hits = h.wireIds.map(id => nearestOnPath(paths.get(id)!, h.arc));
   const pairs = hits.flatMap(a => hits.map(b => ({ a, b })));
   const { a, b } = pairs.reduce((best, p) => (distance(p.a, p.b) > distance(best.a, best.b) ? p : best));
-  const start = distance(a, b) < 16 ? { x: h.arc.x - 12, y: h.arc.y - 12 } : a;
-  const end = distance(a, b) < 16 ? { x: h.arc.x + 12, y: h.arc.y + 12 } : b;
+  const start = distance(a, b) < 16 ? { x: a.x - 12, y: a.y - 12 } : a;
+  const end = distance(a, b) < 16 ? { x: a.x + 12, y: a.y + 12 } : b;
   const length = Math.max(1, distance(start, end));
   const bulge = Math.min(24, length / 3);
   const control = {
     x: (start.x + end.x) / 2 + ((end.y - start.y) / length) * bulge,
     y: (start.y + end.y) / 2 - ((end.x - start.x) / length) * bulge,
   };
-  return { start, control, end };
+  const name = { x: (start.x + 2 * control.x + end.x) / 4, y: (start.y + 2 * control.y + end.y) / 4 };
+  return { start, control, end, name };
 };

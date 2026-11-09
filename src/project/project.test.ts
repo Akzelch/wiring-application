@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { displayPaths, resumeDraw, wirePath, wireWarnings, WIRE_WIDTH } from '../routing/routing.ts';
+import { displayPaths, harnessArc, resumeDraw, wirePath, wireWarnings, WIRE_WIDTH } from '../routing/routing.ts';
 import {
   apply,
   commit,
@@ -179,6 +179,19 @@ test('a Wire joins at most one Harness', () => {
     { type: 'createHarness', name: 'B', wireIds: ['w1'] },
   );
   assert.deepEqual(start.harnesses.map(h => h.name), ['B']);
+});
+
+test('a Harness marker and name follow its Wires when they move', () => {
+  const oneWire = run(straight(twoBlocks()), { type: 'createHarness', name: 'A', wireIds: ['w1'] });
+  const twoWires = run(straight(straight(twoBlocks()), 'p2', 'p2'), { type: 'createHarness', name: 'B', wireIds: ['w1', 'w2'] });
+  const both = { ...emptySelection(), blocks: ['b1', 'b2'] };
+  [oneWire, twoWires].forEach(start => {
+    const moved = apply(start, { type: 'moveItems', selection: both, delta: { x: 0, y: 100 } });
+    const before = harnessArc(start, start.harnesses[0]);
+    const after = harnessArc(moved, moved.harnesses[0]);
+    assert.deepEqual(after.name, { x: before.name.x, y: before.name.y + 100 });
+    assert.equal(after.start.y, before.start.y + 100);
+  });
 });
 
 test('deleting a Block removes its Wires and empties Harnesses', () => {
