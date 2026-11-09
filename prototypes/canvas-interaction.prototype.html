@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Canvas Interaction Prototype</title>
+<style>
+  :root { --bg:#f6f6f3; --panel:#fff; --ink:#1d1d1b; --muted:#6b6b66; --line:#d8d8d2; --accent:#1f5fbf; --warn:#c0271b; --block:#fff; }
+  * { box-sizing:border-box; }
+  html, body { height:100%; margin:0; }
+  body { background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; display:grid; grid-template-rows:auto 1fr auto; height:100vh; }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); background:var(--panel); }
+  h1 { font-size:16px; margin:0 0 2px; }
+  header p { margin:0; color:var(--muted); }
+  main { display:grid; grid-template-columns:1fr 300px; min-height:0; }
+  svg { width:100%; height:100%; display:block; background:#fbfbf9; user-select:none; touch-action:none; }
+  aside { border-left:1px solid var(--line); background:var(--panel); padding:12px 14px; overflow:auto; }
+  h2 { font-size:12px; text-transform:uppercase; letter-spacing:.05em; color:var(--muted); margin:14px 0 6px; }
+  h2:first-child { margin-top:0; }
+  dl { display:grid; grid-template-columns:1fr auto; gap:2px 10px; margin:0; }
+  dt { color:var(--muted); } dd { margin:0; font-variant-numeric:tabular-nums; text-align:right; }
+  dd.bad { color:var(--warn); font-weight:600; }
+  .note { font-size:13px; }
+  button { font:inherit; padding:4px 10px; border:1px solid var(--line); border-radius:4px; background:var(--panel); color:var(--ink); cursor:pointer; }
+  button:hover { border-color:var(--accent); }
+  button.on { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button.done { color:var(--muted); text-decoration:line-through; }
+  .row { display:flex; flex-wrap:wrap; gap:6px; }
+  footer { border-top:1px solid var(--line); background:var(--panel); padding:8px 16px; }
+  #desc { margin:6px 0; max-width:110ch; }
+  kbd { border:1px solid var(--line); border-bottom-width:2px; border-radius:3px; padding:0 4px; font-size:12px; }
+  .pname { font-size:10px; fill:var(--muted); pointer-events:none; }
+  .bname { font-size:13px; font-weight:600; fill:var(--ink); pointer-events:none; }
+  .zname { pointer-events:none; }
+</style>
+</head>
+<body>
+<header>
+  <h1>PROTOTYPE, throwaway: placing Blocks and drawing Wires (version 4)</h1>
+  <p>Question: when you draw Wires with corners and drag a Block, does the Wire behave the way you expect, and does it stay usable at 15 Blocks?</p>
+</header>
+<main>
+  <svg id="c" viewBox="0 0 1600 1000"></svg>
+  <aside>
+    <h2>Overlapping Wires</h2>
+    <div class="row">
+      <button id="lane-half">Half spacing</button>
+      <button id="lane-touch">Exactly touching</button>
+    </div>
+    <h2>Actions</h2>
+    <div class="row">
+      <button id="add">Add Block</button>
+      <button id="del">Delete selected</button>
+      <button id="undo">Undo</button>
+      <button id="redo">Redo</button>
+    </div>
+    <h2>Current state</h2>
+    <dl id="state"></dl>
+    <h2>Controls</h2>
+    <p class="note">Click a Pin to start a Wire, click empty space to add a corner, click another Pin to finish. <kbd>Space</kbd> flips the bend, <kbd>Backspace</kbd> removes the last corner, <kbd>Esc</kbd> cancels. Drag a Wire segment to slide it. Scroll to zoom, drag the background to pan. Double-click a Block to label it. A dark Pin has more than one Wire: click it to start another. <kbd>Del</kbd>, <kbd>Ctrl+Z</kbd>, <kbd>Ctrl+Y</kbd> work.</p>
+  </aside>
+</main>
+<footer>
+  <div class="row" id="tabs"></div>
+  <p id="desc"></p>
+  <div class="row" id="steps"></div>
+</footer>
+
+<script>
+// Pure logic: no DOM. This is the part worth lifting into the real build.
+const Model = (() => {
+  const GRID = 10, PITCH = 20;
+  const snap = v => Math.round(v / GRID) * GRID;
+
+  const makeBlock = (id, x, y, counts) => ({
+    id, x, y,
+    pins: Object.entries(counts).flatMap(([side, n]) =>
+      Array.from({ length: n }, (_, i) => ({ id: side[0] + (i + 1), name: String(i + 1), side, i }))),
+  });
+  const sideCount = (b, s) => b.pins.filter(p => p.side === s).length;
+  const size = b => ({
+    w: Math.max(100, (Math.max(sideCount(b, 'top'), sideCount(b, 'bottom')) + 1) * PITCH),
+    h: Math.max(60, (Math.max(sideCount(b, 'left'), sideCount(b, 'right')) + 1) * PITCH),
+  });
+  const pinPos = (b, p) => {
+    const { w, h } = size(b), o = (p.i + 1) * PITCH;
+    return { left: { x: b.x, y: b.y + o }, right: { x: b.x + w, y: b.y + o },
+             top: { x: b.x + o, y: b.y }, bottom: { x: b.x + o, y: b.y + h } }[p.side];
+  };
+  const block = (doc, id) => doc.blocks.find(b => b.id === id);
+  const pin = (b, id) => b.pins.find(p => p.id === id);
+  const endPos = (doc, e) => { const b = block(doc, e.b); return pinPos(b, pin(b, e.p)); };
+  const sideAxis = s => (s === 'left' || s === 'right') ? 'h' : 'v';
+  const path = (doc, w) => [endPos(doc, w.from), ...w.corners, endPos(doc, w.to)];
+
+  const same = (a, b) => a.x === b.x && a.y === b.y;
+  const line = (a, b, c) => (a.x === b.x && b.x === c.x) || (a.y === b.y && b.y === c.y);
+  const clean = pts => {
+    const step = pts.filter((p, i) => i === 0 || i === pts.length - 1 || !same(p, pts[i - 1]));
+    const out = step.filter((p, i) => i === 0 || i === step.length - 1 || !line(step[i - 1], p, step[i + 1]));
+    return out.length === pts.length ? out : clean(out);
+  };
+
+  // A segment running along the Block's side would pass over its neighbouring Pins.
+  const OUTWARD = { left: [-1, 0], right: [1, 0], top: [0, -1], bottom: [0, 1] };
+  const STUB = 20;
+  const guardStart = (pts, side) => {
+    const tidied = clean(pts), [p0, p1] = tidied, [nx, ny] = OUTWARD[side];
+    if (nx ? p0.x !== p1.x : p0.y !== p1.y) return tidied;
+    const stub = { x: p0.x + nx * STUB, y: p0.y + ny * STUB };
+    const kink = nx ? { x: stub.x, y: p1.y } : { x: p1.x, y: stub.y };
+    return clean([p0, stub, kink, ...tidied.slice(1)]);
+  };
+  const guard = (pts, fromSide, toSide) => guardStart([...guardStart(pts, fromSide)].reverse(), toSide).reverse();
+  const sideOf = (doc, e) => { const b = block(doc, e.b); return pin(b, e.p).side; };
+  const guarded = (doc, w, pts) => guard(pts, sideOf(doc, w.from), sideOf(doc, w.to)).slice(1, -1);
+
+  const dogleg = (a, b, moved) => {
+    const mx = snap((a.x + b.x) / 2), my = snap((a.y + b.y) / 2);
+    return a.y === b.y ? [{ x: mx, y: moved.y }, { x: mx, y: b.y }] : [{ x: moved.x, y: my }, { x: b.x, y: my }];
+  };
+  const stretch = (pts, dx, dy) => {
+    const [p0, c1] = pts, moved = { x: p0.x + dx, y: p0.y + dy };
+    if (pts.length === 2) return (p0.y === c1.y ? dy : dx) === 0 ? [moved, c1] : [moved, ...dogleg(p0, c1, moved), c1];
+    const next = p0.y === c1.y ? { x: c1.x, y: c1.y + dy } : { x: c1.x + dx, y: c1.y };
+    return [moved, next, ...pts.slice(2)];
+  };
+  const carry = (pts, dx, dy) => {
+    const shift = p => ({ x: p.x + dx, y: p.y + dy });
+    if (pts.length === 2) return stretch(pts, dx, dy);
+    const far = pts[pts.length - 1], last = pts[pts.length - 2];
+    const shifted = shift(last);
+    const fixed = last.y === far.y ? { x: shifted.x, y: far.y } : { x: far.x, y: shifted.y };
+    return [...pts.slice(0, -2).map(shift), fixed, far];
+  };
+  const moved = (mode, pts, atStart, dx, dy) => {
+    const fn = mode === 'carry' ? carry : stretch;
+    return atStart ? fn(pts, dx, dy) : fn([...pts].reverse(), dx, dy).reverse();
+  };
+
+  const moveBlock = (doc, id, dx, dy, mode) => ({
+    ...doc,
+    blocks: doc.blocks.map(b => b.id === id ? { ...b, x: b.x + dx, y: b.y + dy } : b),
+    wires: doc.wires.map(w => {
+      const a = w.from.b === id, z = w.to.b === id;
+      if (!a && !z) return w;
+      if (a && z) return { ...w, corners: w.corners.map(c => ({ x: c.x + dx, y: c.y + dy })) };
+      return { ...w, corners: guarded(doc, w, moved(mode, path(doc, w), a, dx, dy)) };
+    }),
+  });
+
+  const slideSegment = (doc, wireId, i, delta) => ({
+    ...doc,
+    wires: doc.wires.map(w => {
+      if (w.id !== wireId) return w;
+      const base = path(doc, w);
+      const horizontal = base[i].y === base[i + 1].y;
+      const p = [...(i === 0 ? [base[0]] : []), ...base, ...(i + 1 === base.length - 1 ? [base[base.length - 1]] : [])];
+      const j = i === 0 ? 1 : i;
+      const out = p.map((q, k) => (k === j || k === j + 1) ? (horizontal ? { x: q.x, y: q.y + delta.y } : { x: q.x + delta.x, y: q.y }) : q);
+      return { ...w, corners: guarded(doc, w, out) };
+    }),
+  });
+
+  const tidy = doc => ({ ...doc, wires: doc.wires.map(w => ({ ...w, corners: guarded(doc, w, path(doc, w)) })) });
+  const setLabel = (doc, id, label) => ({ ...doc, blocks: doc.blocks.map(b => b.id === id ? { ...b, label } : b) });
+  const wiresOnPin = (doc, b, p) => doc.wires.filter(w => (w.from.b === b && w.from.p === p) || (w.to.b === b && w.to.p === p)).length;
+
+  const bend = (p, c, axis) => axis === 'h' ? { x: c.x, y: p.y } : { x: p.x, y: c.y };
+  const nextAxis = (doc, draw) => {
+    const n = draw.pts.length, last = draw.pts[n - 1], prev = draw.pts[n - 2];
+    const start = block(doc, draw.from.b);
+    const base = n === 1 ? sideAxis(pin(start, draw.from.p).side) : (prev.y === last.y ? 'v' : 'h');
+    return draw.flip ? (base === 'h' ? 'v' : 'h') : base;
+  };
+  const preview = (doc, draw, cursor, endPin) => {
+    const last = draw.pts[draw.pts.length - 1], fromSide = sideOf(doc, draw.from);
+    if (endPin) {
+      const b = block(doc, endPin.b), p = pin(b, endPin.p), end = pinPos(b, p);
+      return guard([...draw.pts, bend(last, end, sideAxis(p.side) === 'h' ? 'v' : 'h'), end], fromSide, p.side);
+    }
+    return guardStart([...draw.pts, bend(last, cursor, nextAxis(doc, draw)), cursor], fromSide);
+  };
+
+  const segments = pts => pts.slice(1).map((b, i) => ({ a: pts[i], b }));
+
+  const passesOverPin = (doc, pts) => {
+    const segs = segments(pts), lastSeg = segs.length - 1;
+    return doc.blocks.some(b => b.pins.some(p => {
+      const q = pinPos(b, p);
+      return segs.some((s, i) => {
+        if ((i === 0 && same(q, pts[0])) || (i === lastSeg && same(q, pts[pts.length - 1]))) return false;
+        const onX = q.x >= Math.min(s.a.x, s.b.x) && q.x <= Math.max(s.a.x, s.b.x);
+        const onY = q.y >= Math.min(s.a.y, s.b.y) && q.y <= Math.max(s.a.y, s.b.y);
+        return onX && onY;
+      });
+    }));
+  };
+
+  // Any Wires overlapping on a line are drawn side by side; the stored routes are untouched.
+  const shiftRoute = (pts, offsets) => {
+    const segs = segments(pts).map((s, i) => {
+      const horizontal = s.a.y === s.b.y, o = offsets[i];
+      const shift = p => horizontal ? { x: p.x, y: p.y + o } : { x: p.x + o, y: p.y };
+      return { a: shift(s.a), b: shift(s.b), horizontal };
+    });
+    return pts.map((_, i) => {
+      if (i === 0) return segs[0].a;
+      if (i === pts.length - 1) return segs[segs.length - 1].b;
+      const [p, n] = [segs[i - 1], segs[i]];
+      return p.horizontal ? { x: n.a.x, y: p.a.y } : { x: p.a.x, y: n.a.y };
+    });
+  };
+  const describeSegments = routes => routes.flatMap(r => segments(r.pts).map((s, i, all) => {
+    const horizontal = s.a.y === s.b.y;
+    const along = p => horizontal ? p.x : p.y, across = p => horizontal ? p.y : p.x;
+    const turnAt = (corner, other) => other ? Math.sign(across(other) - across(corner)) : 0;
+    const startFirst = along(s.a) <= along(s.b);
+    const [lo, hi] = startFirst ? [s.a, s.b] : [s.b, s.a];
+    const before = i > 0 ? all[i - 1].a : null, after = i < all.length - 1 ? all[i + 1].b : null;
+    return {
+      wire: r.w.id, index: i, horizontal, line: across(s.a), start: along(lo), end: along(hi),
+      turnStart: turnAt(lo, startFirst ? before : after), turnEnd: turnAt(hi, startFirst ? after : before),
+    };
+  }));
+  const overlaps = (a, b) => a.start < b.end && b.start < a.end;
+  const compareLanes = (a, b) => {
+    const votes =
+      (a.end < b.end ? a.turnEnd : 0) - (b.end < a.end ? b.turnEnd : 0) +
+      (a.start > b.start ? a.turnStart : 0) - (b.start > a.start ? b.turnStart : 0) +
+      (a.end === b.end ? a.turnEnd - b.turnEnd : 0) + (a.start === b.start ? a.turnStart - b.turnStart : 0);
+    return votes || (a.turnStart + a.turnEnd) - (b.turnStart + b.turnEnd) || (a.wire < b.wire ? -1 : 1);
+  };
+  const clusterSegments = segs => [...segs].sort((a, b) => a.start - b.start).reduce((clusters, s) => {
+    const open = clusters[clusters.length - 1];
+    return open && open.reach > s.start
+      ? [...clusters.slice(0, -1), { items: [...open.items, s], reach: Math.max(open.reach, s.end) }]
+      : [...clusters, { items: [s], reach: s.end }];
+  }, []).map(c => c.items);
+  const assignLanes = items => {
+    const placed = [...items].sort(compareLanes).reduce((done, s) => {
+      const lane = Math.max(-1, ...done.filter(d => overlaps(d, s)).map(d => d.lane)) + 1;
+      return [...done, { ...s, lane }];
+    }, []);
+    const centre = Math.max(...placed.map(p => p.lane)) / 2;
+    return placed.map(p => ({ ...p, slot: p.lane - centre }));
+  };
+  const displayPaths = (doc, spacing) => {
+    const routes = doc.wires.map(w => ({ w, pts: path(doc, w) }));
+    const segs = describeSegments(routes);
+    const lines = [...new Set(segs.map(s => s.horizontal + ':' + s.line))];
+    const lanes = lines.flatMap(key => clusterSegments(segs.filter(s => s.horizontal + ':' + s.line === key)).flatMap(assignLanes));
+    const slotOf = new Map(lanes.map(l => [l.wire + ':' + l.index, l.slot]));
+    return new Map(routes.map(r => [r.w.id, shiftRoute(r.pts, r.pts.slice(1).map((_, i) => slotOf.get(r.w.id + ':' + i) * spacing))]));
+  };
+  const between = (v, a, b) => v > Math.min(a, b) && v < Math.max(a, b);
+  const stats = doc => {
+    const all = doc.wires.flatMap(w => segments(clean(path(doc, w))).map(s => ({ ...s, w: w.id })));
+    let crossings = 0;
+    all.forEach((s, i) => all.slice(i + 1).forEach(t => {
+      if (s.w === t.w) return;
+      const [h, v] = s.a.y === s.b.y ? [s, t] : [t, s];
+      if (h.a.y === h.b.y && v.a.x === v.b.x && between(v.a.x, h.a.x, h.b.x) && between(h.a.y, v.a.y, v.b.y)) crossings++;
+    }));
+    const behind = new Set();
+    doc.blocks.forEach(b => {
+      const { w, h } = size(b);
+      all.forEach(s => {
+        const x0 = Math.min(s.a.x, s.b.x), x1 = Math.max(s.a.x, s.b.x), y0 = Math.min(s.a.y, s.b.y), y1 = Math.max(s.a.y, s.b.y);
+        if (x1 > b.x && x0 < b.x + w && y1 > b.y && y0 < b.y + h) behind.add(s.w);
+      });
+    });
+    const overPin = doc.wires.filter(w => passesOverPin(doc, clean(path(doc, w)))).length;
+    return { crossings, behind: behind.size, overPin, corners: doc.wires.reduce((n, w) => n + w.corners.length, 0) };
+  };
+
+  return { GRID, snap, makeBlock, size, pinPos, block, pin, endPos, path, clean, moveBlock, slideSegment, tidy, setLabel, wiresOnPin, preview, segments, stats, passesOverPin, displayPaths };
+})();
+
+// Scenarios
+const COLOURS = ['#222', '#8b4513', '#d22', '#e07b00', '#b8a800', '#1e9e3a', '#2257d6', '#7c2fc4', '#808080', '#ee5f9d'];
+const w = (id, fb, fp, tb, tp, corners, c) => ({ id, from: { b: fb, p: fp }, to: { b: tb, p: tp }, corners, colour: COLOURS[c % COLOURS.length] });
+
+const pair = () => ({
+  blocks: [Model.makeBlock('J1', 300, 300, { right: 4 }), Model.makeBlock('J2', 900, 300, { left: 4 })],
+  wires: [
+    w('w1', 'J1', 'r1', 'J2', 'l1', [], 2),
+    w('w2', 'J1', 'r2', 'J2', 'l3', [{ x: 600, y: 340 }, { x: 600, y: 360 }], 6),
+    w('w3', 'J1', 'r4', 'J2', 'l4', [{ x: 500, y: 380 }, { x: 500, y: 560 }, { x: 760, y: 560 }, { x: 760, y: 380 }], 5),
+  ],
+});
+const large = () => {
+  let seed = 7;
+  const rnd = n => { seed = (seed * 1103 + 12345) % 65536; return seed % n; };
+  const id = (c, r) => 'J' + (r * 5 + c + 1);
+  const blocks = [0, 1, 2].flatMap(r => [0, 1, 2, 3, 4].map(c => Model.makeBlock(id(c, r), 60 + c * 310, 60 + r * 310, { left: 6, right: 6 })));
+  const wires = Array.from({ length: 40 }, (_, i) => {
+    const r0 = rnd(3), c0 = rnd(4), r1 = rnd(3), c1 = Math.min(4, c0 + 1 + (rnd(5) === 0 ? 1 : 0));
+    const pf = 'r' + (rnd(6) + 1), pt = 'l' + (rnd(6) + 1);
+    const a = Model.block({ blocks }, id(c0, r0)), z = Model.block({ blocks }, id(c1, r1));
+    const p0 = Model.pinPos(a, Model.pin(a, pf)), pn = Model.pinPos(z, Model.pin(z, pt));
+    const mx = Model.snap(p0.x + 30 + (i % 12) * 12);
+    const corners = p0.y === pn.y ? [] : [{ x: mx, y: p0.y }, { x: mx, y: pn.y }];
+    return w('w' + i, id(c0, r0), pf, id(c1, r1), pt, corners, i);
+  });
+  return { blocks, wires };
+};
+
+const SCENARIOS = [
+  { name: 'Stretching one end', make: pair,
+    desc: 'Three Wires between J1 and J2: straight, one jog, and a long detour below. Watch which corners move and whether the J1 end stays still. Then drag the short segment touching a Pin up or down: it should kink out from the connector, never run along it.',
+    steps: [['Drag J2 down 60', 'J2', 0, 60], ['Drag J2 right 150', 'J2', 150, 0], ['Drag J2 up 200', 'J2', 0, -200]] },
+  { name: 'Dragging past the Wire', make: pair,
+    desc: 'Pull J2 to the far side of J1. Do the Wires fold into something you can still read and fix by sliding a segment, or do you want the app to help?',
+    steps: [['Drag J2 left 500', 'J2', -500, 0], ['Drag J2 left 300 more', 'J2', -300, 0], ['Drag J2 down 200', 'J2', 0, 200]] },
+  { name: 'Straight Wire, then back', make: pair,
+    desc: 'A straight Wire has no corner to move, so a jog appears. Moving back should make it straight again without leaving extra corners. Watch the corner count.',
+    steps: [['Drag J2 up 80', 'J2', 0, -80], ['Drag J2 down 80', 'J2', 0, 80]] },
+  { name: '15 Blocks, 40 Wires', make: large,
+    desc: 'Full-size layout. Try picking one Wire out of the crowd, starting a new one, and dragging a Block. Hover a Block to highlight its Wires. Is it readable, and is anything missing to make it so?',
+    steps: [['Drag J8 up-right', 'J8', 100, -80], ['Drag J13 down', 'J13', 0, 120], ['Drag J6 right', 'J6', 140, 0]] },
+  { name: 'Several Wires on one Pin', make: () => ({
+      blocks: [Model.makeBlock('J1', 300, 300, { right: 4 }), Model.makeBlock('J2', 900, 160, { left: 4 }), Model.makeBlock('J3', 900, 480, { left: 4 })],
+      wires: [
+        w('s1', 'J1', 'r2', 'J2', 'l2', [{ x: 600, y: 340 }, { x: 600, y: 200 }], 2),
+        w('s2', 'J1', 'r2', 'J3', 'l2', [{ x: 600, y: 340 }, { x: 600, y: 520 }], 6),
+      ] }),
+    desc: 'Pin 2 on J1 feeds two Wires, drawn as a dark Pin. They share the path out of the Pin and then split. Can you tell them apart, select each one, and add a third by clicking the Pin?',
+    steps: [['Drag J3 down 100', 'J3', 0, 100], ['Drag J2 up 60', 'J2', 0, -60]] },
+  { name: 'Overlap, no shared Pin', make: () => ({
+      blocks: [Model.makeBlock('J1', 200, 200, { right: 4 }), Model.makeBlock('J2', 1000, 200, { left: 4 }), Model.makeBlock('J3', 200, 420, { right: 4 }), Model.makeBlock('J4', 1000, 420, { left: 4 })],
+      wires: [
+        w('o1', 'J1', 'r1', 'J2', 'l1', [], 2),
+        w('o2', 'J3', 'r1', 'J4', 'l1', [{ x: 500, y: 440 }, { x: 500, y: 220 }, { x: 800, y: 220 }, { x: 800, y: 440 }], 6),
+      ] }),
+    desc: 'These two Wires connect different Blocks but share a stretch of the same line. They should run side by side there, then go their own ways. Flip the spacing buttons to compare.',
+    steps: [['Drag J4 down 60', 'J4', 0, 60]] },
+];
+
+// Page shell
+const svg = document.getElementById('c');
+const $ = id => document.getElementById(id);
+const mode = 'end';
+const SPACING = { half: 1.5, touch: 1.8 };
+let spacing = 'touch';
+let lastBlockClick = { id: null, at: 0 };
+let doc, undoStack = [], redoStack = [], draw = null, gesture = null, placing = null;
+let hover = null, sel = null, cursor = { x: 0, y: 0 }, view = { x: 0, y: 0, w: 1600, h: 1000 }, last = 'Nothing yet', scenario = 0, stepsDone = new Set(), colourIndex = 3;
+
+const commit = (next, label) => { undoStack = [...undoStack, doc]; redoStack = []; doc = next; last = label; };
+const toWorld = e => { const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svg.getScreenCTM().inverse()); return { x: p.x, y: p.y }; };
+const snapped = p => ({ x: Model.snap(p.x), y: Model.snap(p.y) });
+const pts2 = ps => ps.map(p => p.x + ',' + p.y).join(' ');
+const parsePin = s => { const [b, p] = s.split(':'); return { b, p }; };
+
+function render() {
+  svg.setAttribute('viewBox', [view.x, view.y, view.w, view.h].join(' '));
+  const hb = hover && hover.block;
+  const blocksSvg = doc.blocks.map(b => {
+    const { w: bw, h } = Model.size(b), selected = sel && sel.block === b.id;
+    const labels = b.pins.map(p => {
+      const q = Model.pinPos(b, p), left = p.side === 'left', right = p.side === 'right';
+      return `<text class="pname" x="${q.x + (left ? 7 : right ? -7 : 0)}" y="${q.y + (p.side === 'top' ? 14 : p.side === 'bottom' ? -7 : 3)}" text-anchor="${left ? 'start' : right ? 'end' : 'middle'}">${p.name}</text>`;
+    }).join('');
+    return `<rect data-block="${b.id}" x="${b.x}" y="${b.y}" width="${bw}" height="${h}" rx="3" fill="var(--block)" stroke="${selected ? 'var(--accent)' : '#555'}" stroke-width="${selected ? 2.5 : 1.2}" style="cursor:move"/>
+      <text class="bname" x="${b.x + bw / 2}" y="${b.y + h / 2 + 4}" text-anchor="middle">${b.id}</text>
+      <text class="bname" x="${b.x}" y="${b.y - 6}" fill="var(--accent)" style="fill:var(--accent)">${(b.label || '').replace(/&/g, '&amp;').replace(/</g, '&lt;')}</text>${labels}`;
+  }).join('');
+
+  const display = Model.displayPaths(doc, SPACING[spacing]);
+  const wiresSvg = doc.wires.map(wr => {
+    const p = display.get(wr.id);
+    const warn = Model.passesOverPin(doc, Model.clean(Model.path(doc, wr)));
+    const lit = (sel && sel.wire === wr.id) || (hover && hover.wire === wr.id) || (hb && (wr.from.b === hb || wr.to.b === hb));
+    const dim = hb && !lit;
+    const hits = Model.segments(p).map((s, i) => `<line data-seg="${wr.id}:${i}" x1="${s.a.x}" y1="${s.a.y}" x2="${s.b.x}" y2="${s.b.y}" stroke="transparent" stroke-width="10" style="cursor:${s.a.y === s.b.y ? 'ns-resize' : 'ew-resize'}"/>`).join('');
+    const halo = warn ? `<polyline points="${pts2(p)}" fill="none" stroke="var(--warn)" stroke-width="9" stroke-dasharray="10 6" opacity=".55" pointer-events="none"/>` : '';
+    return `${halo}<polyline points="${pts2(p)}" fill="none" stroke="${wr.colour}" stroke-width="${lit ? 3.5 : 1.8}" opacity="${dim ? .25 : 1}" pointer-events="none"/>${hits}`;
+  }).join('');
+
+  const pinsSvg = doc.blocks.flatMap(b => b.pins.map(p => {
+    const q = Model.pinPos(b, p), key = b.id + ':' + p.id, on = hover && hover.pin === key;
+    const shared = Model.wiresOnPin(doc, b.id, p.id) > 1;
+    return `<circle data-pin="${key}" cx="${q.x}" cy="${q.y}" r="${on ? 7 : 4.5}" fill="${on ? 'var(--accent)' : shared ? '#222' : '#fff'}" stroke="#333" style="cursor:crosshair"/>`;
+  })).join('');
+
+  let overlay = '';
+  if (draw) {
+    const endPin = hover && hover.pin && hover.pin !== draw.from.b + ':' + draw.from.p ? parsePin(hover.pin) : null;
+    overlay = `<polyline points="${pts2(Model.preview(doc, draw, cursor, endPin))}" fill="none" stroke="${COLOURS[colourIndex % COLOURS.length]}" stroke-width="2.5" stroke-dasharray="6 4" pointer-events="none"/>`;
+  }
+  if (placing) {
+    const ghost = Model.makeBlock(placing, cursor.x, cursor.y, { left: 4, right: 4 }), s = Model.size(ghost);
+    overlay += `<rect x="${ghost.x}" y="${ghost.y}" width="${s.w}" height="${s.h}" fill="none" stroke="var(--accent)" stroke-dasharray="5 4" pointer-events="none"/>`;
+  }
+  svg.innerHTML = blocksSvg + wiresSvg + pinsSvg + overlay;
+
+  const st = Model.stats(doc);
+  const selText = sel ? (sel.block || sel.wire) : 'None';
+  const selWire = sel && sel.wire && doc.wires.find(x => x.id === sel.wire);
+  $('state').innerHTML = [
+    ['Blocks', doc.blocks.length], ['Wires', doc.wires.length], ['Corners in total', st.corners],
+    ['Wire crossings', st.crossings], ['Wires running behind a Block', st.behind, st.behind > 0],
+    ['Wires passing over a Pin', st.overPin, st.overPin > 0],
+    ['Selected', selText], ...(selWire ? [['Its corners', selWire.corners.length]] : []),
+    ['Drawing a Wire', draw ? 'Yes, ' + (draw.pts.length - 1) + ' clicks in' : 'No'], ['Last action', last],
+  ].map(([k, v, bad]) => `<dt>${k}</dt><dd class="${bad ? 'bad' : ''}">${v}</dd>`).join('');
+  $('lane-half').className = spacing === 'half' ? 'on' : '';
+  $('lane-touch').className = spacing === 'touch' ? 'on' : '';
+
+}
+
+function renderScenario() {
+  const s = SCENARIOS[scenario];
+  $('tabs').innerHTML = SCENARIOS.map((x, i) => `<button data-tab="${i}" class="${i === scenario ? 'on' : ''}">${x.name}</button>`).join('');
+  $('desc').textContent = s.desc;
+  $('steps').innerHTML = s.steps.map((x, i) => `<button data-step="${i}" class="${stepsDone.has(i) ? 'done' : ''}">${i + 1}. ${x[0]}</button>`).join('') + '<button data-restart="1">Start again</button>';
+}
+
+function load(i) {
+  scenario = i; doc = SCENARIOS[i].make(); undoStack = []; redoStack = []; draw = null; sel = null; hover = null; placing = null;
+  stepsDone = new Set(); last = 'Loaded: ' + SCENARIOS[i].name; view = { x: 0, y: 0, w: 1600, h: 1000 };
+  renderScenario(); render();
+}
+
+const undo = () => { if (!undoStack.length) return; redoStack = [...redoStack, doc]; doc = undoStack[undoStack.length - 1]; undoStack = undoStack.slice(0, -1); last = 'Undo'; sel = null; render(); };
+const redo = () => { if (!redoStack.length) return; undoStack = [...undoStack, doc]; doc = redoStack[redoStack.length - 1]; redoStack = redoStack.slice(0, -1); last = 'Redo'; sel = null; render(); };
+const deleteSelected = () => {
+  if (!sel) return;
+  const next = sel.wire
+    ? { ...doc, wires: doc.wires.filter(x => x.id !== sel.wire) }
+    : { blocks: doc.blocks.filter(b => b.id !== sel.block), wires: doc.wires.filter(x => x.from.b !== sel.block && x.to.b !== sel.block) };
+  commit(next, 'Deleted ' + (sel.wire || sel.block)); sel = null; render();
+};
+const nextBlockName = () => { let n = 1; while (doc.blocks.some(b => b.id === 'J' + n)) n++; return 'J' + n; };
+
+svg.addEventListener('pointerdown', e => {
+  const world = toWorld(e), t = e.target;
+  const pinKey = t.dataset && t.dataset.pin, seg = t.dataset && t.dataset.seg, blockId = t.dataset && t.dataset.block;
+  if (placing) {
+    const p = snapped(world);
+    commit({ ...doc, blocks: [...doc.blocks, Model.makeBlock(placing, p.x, p.y, { left: 4, right: 4 })] }, 'Placed ' + placing);
+    placing = null; render(); return;
+  }
+  if (draw) {
+    if (pinKey && pinKey !== draw.from.b + ':' + draw.from.p) {
+      const to = parsePin(pinKey);
+      const full = Model.clean(Model.preview(doc, draw, cursor, to));
+      if (Model.passesOverPin(doc, full)) { last = 'Blocked: that route passes over a Pin'; render(); return; }
+      const id = 'w' + Date.now();
+      commit({ ...doc, wires: [...doc.wires, { id, from: draw.from, to, corners: full.slice(1, -1), colour: COLOURS[colourIndex % COLOURS.length] }] }, 'Finished a Wire with ' + (full.length - 2) + ' corners');
+      colourIndex++; draw = null; render(); return;
+    }
+    if (!pinKey) {
+      const p = Model.preview(doc, draw, cursor, null);
+      if (Model.passesOverPin(doc, Model.clean(p))) { last = 'Blocked: that corner passes over a Pin'; render(); return; }
+      draw = { ...draw, history: [...draw.history, draw.pts], pts: Model.clean(p), flip: false };
+      render();
+    }
+    return;
+  }
+  if (pinKey) {
+    const from = parsePin(pinKey);
+    draw = { from, pts: [Model.endPos(doc, from)], history: [], flip: false }; sel = null; render(); return;
+  }
+  if (seg) { const [wire, i] = seg.split(':'); gesture = { kind: 'seg', wire, i: +i, start: world, base: doc, moved: false }; return; }
+  if (blockId) {
+    const now = performance.now();
+    if (lastBlockClick.id === blockId && now - lastBlockClick.at < 400) {
+      lastBlockClick = { id: null, at: 0 };
+      const current = Model.block(doc, blockId).label || '';
+      const label = window.prompt('Label for ' + blockId, current);
+      if (label !== null && label !== current) { commit(Model.setLabel(doc, blockId, label), 'Labelled ' + blockId); render(); }
+      return;
+    }
+    lastBlockClick = { id: blockId, at: now };
+    gesture = { kind: 'block', id: blockId, start: world, base: doc, moved: false };
+    return;
+  }
+  sel = null; gesture = { kind: 'pan', cx: e.clientX, cy: e.clientY, view, scale: svg.getScreenCTM().a }; render();
+});
+
+window.addEventListener('pointermove', e => {
+  const world = toWorld(e);
+  cursor = snapped(world);
+  if (gesture && gesture.kind === 'pan') {
+    view = { ...gesture.view, x: gesture.view.x - (e.clientX - gesture.cx) / gesture.scale, y: gesture.view.y - (e.clientY - gesture.cy) / gesture.scale };
+    render(); return;
+  }
+  if (gesture) {
+    const d = { x: Model.snap(world.x - gesture.start.x), y: Model.snap(world.y - gesture.start.y) };
+    gesture.moved = gesture.moved || d.x !== 0 || d.y !== 0;
+    if (gesture.kind === 'block') doc = Model.moveBlock(gesture.base, gesture.id, d.x, d.y, mode);
+    else {
+      const next = Model.slideSegment(gesture.base, gesture.wire, gesture.i, d);
+      if (Model.passesOverPin(next, Model.path(next, next.wires.find(x => x.id === gesture.wire)))) last = 'Blocked: that position passes over a Pin';
+      else doc = next;
+    }
+    render(); return;
+  }
+  const d = e.target.dataset || {};
+  const key = JSON.stringify([d.pin, d.seg, d.block]);
+  const changed = key !== render.lastKey; render.lastKey = key;
+  hover = d.pin ? { pin: d.pin } : d.seg ? { wire: d.seg.split(':')[0] } : d.block ? { block: d.block } : null;
+  if (changed || draw || placing) render();
+});
+
+window.addEventListener('pointerup', () => {
+  if (!gesture) return;
+  const g = gesture; gesture = null;
+  if (g.kind === 'pan') return;
+  if (g.moved) {
+    const after = Model.tidy(doc); doc = g.base;
+    commit(after, g.kind === 'block' ? 'Dragged ' + g.id : 'Slid a segment');
+  } else {
+    sel = g.kind === 'block' ? { block: g.id } : { wire: g.wire };
+  }
+  render();
+});
+
+svg.addEventListener('wheel', e => {
+  e.preventDefault();
+  const p = toWorld(e), k = e.deltaY > 0 ? 1.15 : 1 / 1.15;
+  view = { x: p.x - (p.x - view.x) * k, y: p.y - (p.y - view.y) * k, w: view.w * k, h: view.h * k };
+  render();
+}, { passive: false });
+
+window.addEventListener('keydown', e => {
+  if (e.key === 'Escape') { draw = null; placing = null; render(); }
+  else if (e.key === ' ' && draw) { e.preventDefault(); draw = { ...draw, flip: !draw.flip }; render(); }
+  else if (e.key === 'Backspace' && draw) {
+    e.preventDefault();
+    if (!draw.history.length) draw = null;
+    else draw = { ...draw, pts: draw.history[draw.history.length - 1], history: draw.history.slice(0, -1), flip: false };
+    render();
+  }
+  else if (e.key === 'Delete') deleteSelected();
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); undo(); }
+  else if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'y') { e.preventDefault(); redo(); }
+  else if (e.key.toLowerCase() === 'w' && hover && hover.pin && !draw) {
+    const from = parsePin(hover.pin); draw = { from, pts: [Model.endPos(doc, from)], history: [], flip: false }; render();
+  }
+});
+
+$('lane-half').onclick = () => { spacing = 'half'; render(); };
+$('lane-touch').onclick = () => { spacing = 'touch'; render(); };
+$('add').onclick = () => { placing = nextBlockName(); render(); };
+$('del').onclick = deleteSelected;
+$('undo').onclick = undo;
+$('redo').onclick = redo;
+document.querySelector('footer').addEventListener('click', e => {
+  const d = e.target.dataset;
+  if (d.tab !== undefined) load(+d.tab);
+  else if (d.restart) load(scenario);
+  else if (d.step !== undefined) {
+    const [label, id, dx, dy] = SCENARIOS[scenario].steps[+d.step];
+    commit(Model.tidy(Model.moveBlock(doc, id, dx, dy, mode)), label);
+    stepsDone = new Set([...stepsDone, +d.step]);
+    renderScenario(); render();
+  }
+});
+
+load(0);
+</script>
+</body>
+</html>
