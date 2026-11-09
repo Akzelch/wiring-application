@@ -140,6 +140,30 @@ export const followPins = (before: Project, after: Project): Wire[] =>
     return { ...w, corners: guardedCorners(after, w, bothMoved) };
   });
 
+const landedEnd = (before: Project, after: Project, moved: Set<string>, end: WireEnd): WireEnd | null => {
+  if (!moved.has(end.blockId)) return end;
+  const point = endPoint(before, end);
+  const block = blockOf(after, end.blockId);
+  const pin = block.pins.find(p => same(pinPoint(block, p), point));
+  return pin ? { blockId: end.blockId, pinId: pin.id } : null;
+};
+
+const guarded = (project: Project, w: Wire): Wire => ({ ...w, corners: guardedCorners(project, w, wirePath(project, w)) });
+
+// An end with no Pin to land on becomes the Wire's loose end; a Wire that would have no Pin at all follows instead.
+export const wiresLeftInPlace = (before: Project, after: Project, moved: Set<string>): Wire[] => {
+  const followed = followPins(before, after);
+  return after.wires.map((w, i) => {
+    const from = landedEnd(before, after, moved, w.from);
+    const to = w.to && landedEnd(before, after, moved, w.to);
+    if (from === w.from && to === w.to) return w;
+    const path = wirePath(before, w);
+    if (from) return guarded(after, { ...w, from, to, corners: w.to && !to ? path.slice(1) : w.corners });
+    if (to) return guarded(after, { ...w, from: to, to: null, corners: [...path].reverse().slice(1) });
+    return followed[i];
+  });
+};
+
 // A segment touching a Pin keeps its Pin end fixed: the segment slides and a new stub joins it to the Pin.
 export const slidCorners = (project: Project, w: Wire, index: number, delta: Point): Point[] => {
   const base = wirePath(project, w);

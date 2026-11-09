@@ -154,7 +154,7 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
       {project.wires.filter(w => !w.to).map(w => {
         const end = display.get(w.id)!.at(-1)!;
         return (
-          <rect key={w.id} data-loose={w.id} x={end.x - 6} y={end.y - 6} width={12} height={12} fill="#fff" stroke="var(--warn)" stroke-width={2} style="cursor:crosshair" />
+          <rect key={w.id} data-loose={w.id} x={end.x - 3} y={end.y - 3} width={6} height={6} fill="#fff" stroke="var(--warn)" stroke-width={1.5} style="cursor:crosshair" />
         );
       })}
 

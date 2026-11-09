@@ -11,6 +11,7 @@ import {
   slidCorners,
   snap,
   wirePath,
+  wiresLeftInPlace,
 } from '../routing/routing.ts';
 import { stepGauge } from './gauge.ts';
 import type { Block, Colour, Note, Pin, Point, Project, Selection, Side, Wire, WireEnd, Zone, ZoneDistance } from './types.ts';
@@ -86,7 +87,7 @@ export type Command =
   | { type: 'createBlock'; name: string; label: string; at: Point; pins: Pin[]; scale?: number }
   | { type: 'updateBlock'; blockId: string; name: string; label: string; pins: Pin[]; scale?: number }
   | { type: 'rotateBlocks'; blockIds: string[] }
-  | { type: 'moveItems'; selection: Selection; delta: Point; zoneOnly?: boolean }
+  | { type: 'moveItems'; selection: Selection; delta: Point; zoneOnly?: boolean; keepWires?: boolean }
   | { type: 'deleteItems'; selection: Selection }
   | { type: 'addWire'; from: WireEnd; to: WireEnd | null; corners: Point[]; colours: string[]; gauge?: number }
   | { type: 'setWireRoute'; wireId: string; to: WireEnd | null; corners: Point[] }
@@ -201,15 +202,16 @@ export const movingIds = (project: Project, selection: Selection, zoneOnly: bool
   };
 };
 
-const moveItems = (project: Project, selection: Selection, delta: Point, zoneOnly: boolean): Project => {
+const moveItems = (project: Project, selection: Selection, delta: Point, zoneOnly: boolean, keepWires: boolean): Project => {
   const { blockIds, noteIds } = movingIds(project, selection, zoneOnly);
   const shift = <T extends Point>(item: T): T => ({ ...item, x: item.x + delta.x, y: item.y + delta.y });
-  return withFollowedWires(project, {
+  const after = {
     ...project,
     blocks: project.blocks.map(b => (blockIds.has(b.id) ? shift(b) : b)),
     notes: project.notes.map(n => (noteIds.has(n.id) ? shift(n) : n)),
     zones: project.zones.map(z => (selection.zones.includes(z.id) ? shift(z) : z)),
-  });
+  };
+  return keepWires ? { ...after, wires: wiresLeftInPlace(project, after, blockIds) } : withFollowedWires(project, after);
 };
 
 const pruneHarnesses = (project: Project, keepWire: (id: string) => boolean): Project => ({
@@ -316,7 +318,7 @@ export const apply = (project: Project, command: Command): Project => {
         blocks: project.blocks.map(b => (command.blockIds.includes(b.id) ? rotateBlock(b) : b)),
       });
     case 'moveItems':
-      return moveItems(project, command.selection, command.delta, command.zoneOnly ?? false);
+      return moveItems(project, command.selection, command.delta, command.zoneOnly ?? false, command.keepWires ?? false);
     case 'deleteItems':
       return deleteItems(project, command.selection);
     case 'addWire': {

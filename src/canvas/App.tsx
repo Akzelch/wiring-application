@@ -344,7 +344,7 @@ export const App = () => {
       const raw = { x: world.x - gesture.start.x, y: world.y - gesture.start.y };
       const aligned = e.shiftKey ? alignedMove(gesture.base, gesture.selection, raw, zoneOnly) : { delta, guides: [] };
       setGuides(aligned.guides);
-      setDraft(apply(gesture.base, { type: 'moveItems', selection: gesture.selection, delta: aligned.delta, zoneOnly }));
+      setDraft(apply(gesture.base, { type: 'moveItems', selection: gesture.selection, delta: aligned.delta, zoneOnly, keepWires: e.ctrlKey }));
     } else if (gesture.kind === 'slide') {
       setGesture({ ...gesture, moved: gesture.moved || moved });
       const next = apply(gesture.base, { type: 'slideSegment', wireId: gesture.wireId, index: gesture.index, delta });
@@ -735,6 +735,7 @@ export const App = () => {
           <dt>Shift+drag</dt><dd>Box select</dd>
           <dt>Shift+drag item</dt><dd>Align with other items</dd>
           <dt>Shift+drag Zone</dt><dd>Also moves its contents</dd>
+          <dt>Ctrl+drag Block</dt><dd>Leave Wires in place</dd>
           <dt>Shift+click</dt><dd>Add to selection</dd>
           <dt>Double-click</dt><dd>Edit item</dd>
           <dt>Drag empty</dt><dd>Pan; scroll zooms</dd>

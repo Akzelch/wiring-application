@@ -59,6 +59,40 @@ test('dragging a Block stretches only the segments at its end', () => {
   assert.equal(wire.corners[1].y, 420);
 });
 
+const moveKeepingWires = (project: Project, blockIds: string[], x: number, y: number) =>
+  apply(project, {
+    type: 'moveItems',
+    selection: { ...emptySelection(), blocks: blockIds },
+    delta: { x, y },
+    keepWires: true,
+  });
+
+test('moving a Block with Wires kept reconnects each Wire to the Pin now at its position', () => {
+  const moved = moveKeepingWires(straight(twoBlocks(), 'p2', 'p2'), ['b1'], 0, -20);
+  assert.deepEqual(moved.wires[0].from, { blockId: 'b1', pinId: 'p3' });
+  assert.deepEqual(wirePath(moved, moved.wires[0]), [{ x: 400, y: 340 }, { x: 900, y: 340 }]);
+});
+
+test('a Wire whose end Pin has no Pin at its position after a kept move becomes unconnected there', () => {
+  const moved = moveKeepingWires(straight(twoBlocks()), ['b2'], 0, 20);
+  assert.equal(moved.wires[0].to, null);
+  assert.deepEqual(wirePath(moved, moved.wires[0]), [{ x: 400, y: 320 }, { x: 900, y: 320 }]);
+});
+
+test('a Wire losing only its start Pin after a kept move starts from its other end instead', () => {
+  const moved = moveKeepingWires(straight(twoBlocks()), ['b1'], 0, 20);
+  assert.deepEqual(moved.wires[0].from, { blockId: 'b2', pinId: 'p1' });
+  assert.equal(moved.wires[0].to, null);
+  assert.deepEqual(wirePath(moved, moved.wires[0]), [{ x: 900, y: 320 }, { x: 400, y: 320 }]);
+});
+
+test('a Wire with no Pin at either end after a kept move stays on its Pins and follows', () => {
+  const moved = moveKeepingWires(straight(twoBlocks()), ['b1', 'b2'], 0, 20);
+  assert.deepEqual(moved.wires[0].from, { blockId: 'b1', pinId: 'p1' });
+  assert.deepEqual(moved.wires[0].to, { blockId: 'b2', pinId: 'p1' });
+  assert.deepEqual(wirePath(moved, moved.wires[0]), [{ x: 400, y: 340 }, { x: 900, y: 340 }]);
+});
+
 test('a straight Wire gains a jog and loses it when the Block returns', () => {
   const start = straight(twoBlocks());
   const jogged = move(start, 'b2', 0, -80);
