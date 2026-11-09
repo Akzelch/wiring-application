@@ -167,16 +167,22 @@ const rotateBlock = (b: Block): Block => {
   return { ...rotated, x: snap(centre.x - w / 2), y: snap(centre.y - h / 2) };
 };
 
-const moveItems = (project: Project, selection: Selection, delta: Point, zoneOnly: boolean): Project => {
+export const movingIds = (project: Project, selection: Selection, zoneOnly: boolean) => {
   const zones = zoneOnly ? [] : project.zones.filter(z => selection.zones.includes(z.id));
-  const blockIds = new Set([
-    ...selection.blocks,
-    ...project.blocks.filter(b => zones.some(z => inZone(z, blockCentre(b)))).map(b => b.id),
-  ]);
-  const noteIds = new Set([
-    ...selection.notes,
-    ...project.notes.filter(n => zones.some(z => inZone(z, noteCentre(n)))).map(n => n.id),
-  ]);
+  return {
+    blockIds: new Set([
+      ...selection.blocks,
+      ...project.blocks.filter(b => zones.some(z => inZone(z, blockCentre(b)))).map(b => b.id),
+    ]),
+    noteIds: new Set([
+      ...selection.notes,
+      ...project.notes.filter(n => zones.some(z => inZone(z, noteCentre(n)))).map(n => n.id),
+    ]),
+  };
+};
+
+const moveItems = (project: Project, selection: Selection, delta: Point, zoneOnly: boolean): Project => {
+  const { blockIds, noteIds } = movingIds(project, selection, zoneOnly);
   const shift = <T extends Point>(item: T): T => ({ ...item, x: item.x + delta.x, y: item.y + delta.y });
   return withFollowedWires(project, {
     ...project,

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { PrintView } from '../export/PrintView.tsx';
 import { checklist, mergeImport, type Connector, type ImportReport } from '../kicad/kicad.ts';
+import { alignedMove, type Guide } from '../project/align.ts';
 import {
   apply,
   colourHex,
@@ -107,6 +108,7 @@ export const App = () => {
   const [customName, setCustomName] = useState('');
   const [customHex, setCustomHex] = useState('#00aaaa');
   const [stopped, setStopped] = useState(false);
+  const [guides, setGuides] = useState<Guide[]>([]);
   const [importing, setImporting] = useState<Connector[] | null>(null);
   const [importReport, setImportReport] = useState<ImportReport | null>(null);
 
@@ -265,9 +267,11 @@ export const App = () => {
         setGesture({ kind: 'arc', harnessId: id, start: world, origin: arc, base: present, moved: false, onClick });
         return;
       }
-      const dragged = selected ? selection : e.shiftKey ? withItem(selection, kind, id) : only(kind, id);
+      const dragged = selected ? selection : only(kind, id);
       setSelection(dragged);
-      const onClick = selected ? (e.shiftKey ? withoutItem(selection, kind, id) : only(kind, id)) : null;
+      const onClick = selected
+        ? (e.shiftKey ? withoutItem(selection, kind, id) : only(kind, id))
+        : e.shiftKey ? withItem(selection, kind, id) : null;
       setGesture({ kind: 'move', selection: dragged, start: world, base: present, moved: false, onClick });
       return;
     }
@@ -314,7 +318,10 @@ export const App = () => {
 
     if (gesture.kind === 'move') {
       setGesture({ ...gesture, moved: gesture.moved || moved });
-      setDraft(apply(gesture.base, { type: 'moveItems', selection: gesture.selection, delta, zoneOnly: !e.shiftKey }));
+      const zoneOnly = !e.shiftKey;
+      const aligned = e.shiftKey ? alignedMove(gesture.base, gesture.selection, delta, zoneOnly) : { delta, guides: [] };
+      setGuides(aligned.guides);
+      setDraft(apply(gesture.base, { type: 'moveItems', selection: gesture.selection, delta: aligned.delta, zoneOnly }));
     } else if (gesture.kind === 'slide') {
       setGesture({ ...gesture, moved: gesture.moved || moved });
       const next = apply(gesture.base, { type: 'slideSegment', wireId: gesture.wireId, index: gesture.index, delta });
@@ -343,6 +350,7 @@ export const App = () => {
   const onPointerUp = () => {
     if (!gesture) return;
     setGesture(null);
+    setGuides([]);
     if (gesture.kind === 'pan' || !project) return;
     if (gesture.kind === 'marquee') {
       setSelection(selectInRect(project, gesture.start, gesture.current));
@@ -536,6 +544,7 @@ export const App = () => {
             marquee={gesture?.kind === 'marquee' ? { a: gesture.start, b: gesture.current } : null}
             editingNote={editingNote}
             onNoteCommit={commitNote}
+            guides={guides}
           />
         </svg>
         <div class="status">{status}</div>
@@ -612,7 +621,8 @@ export const App = () => {
           <dt>H</dt><dd>Harness from Wires</dd>
           <dt>1-9</dt><dd>Wire colour</dd>
           <dt>Shift+drag</dt><dd>Box select</dd>
-          <dt>Shift+drag Zone</dt><dd>Move it with its contents</dd>
+          <dt>Shift+drag item</dt><dd>Align with other items</dd>
+          <dt>Shift+drag Zone</dt><dd>Also moves its contents</dd>
           <dt>Shift+click</dt><dd>Add to selection</dd>
           <dt>Double-click</dt><dd>Edit item</dd>
           <dt>Drag empty</dt><dd>Pan; scroll zooms</dd>

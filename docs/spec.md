@@ -41,6 +41,8 @@ Rewrite rather than reuse the [canvas prototype](https://github.com/Akzelch/wiri
 - **Notes**: `N` then a click places one; double-click edits. Multi-line, box grows to fit, no formatting. Drag, multi-select, copy/paste, delete and undo work as for Blocks; no rotation. Drawn above Wires and Zones, with no effect on routing.
 - **Harnesses**: a named set of Wires, drawn as one draggable arc across them with its name beside it. A Wire is in at most one Harness. The arc is only a marker.
 
+Holding `Shift` while dragging a Block, Note or Zone snaps its edges and centre to those of other items, and shows a guide line for each alignment.
+
 ## Wires
 
 - Drawing is KiCad-style: click a Pin (or `W`), click empty space to add a right-angle bend and corner, `Space` flips the bend, `Backspace` removes the last corner, and the Wire arrives straight into the end Pin. A Pin may take several Wires: click it again to start another. A Pin with more than one Wire is drawn dark. There is no splice object and no auto-routing.

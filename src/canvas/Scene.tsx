@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'preact/hooks';
+import type { Guide } from '../project/align.ts';
 import { colourHex, pinLabel } from '../project/project.ts';
 import type { Point, Project, Selection } from '../project/types.ts';
 import {
@@ -25,6 +26,7 @@ type Props = {
   editingNote: string | null;
   onNoteCommit: (id: string, text: string) => void;
   print?: boolean;
+  guides?: Guide[];
 };
 
 const points = (pts: Point[]) => pts.map(p => `${p.x},${p.y}`).join(' ');
@@ -47,7 +49,7 @@ const NoteEditor = ({ text, onCommit }: { text: string; onCommit: (text: string)
 
 const PRINT_WARNING_WIDTH = 4.5;
 
-export const Scene = ({ project, selection, hover, preview, marquee, editingNote, onNoteCommit, print = false }: Props) => {
+export const Scene = ({ project, selection, hover, preview, marquee, editingNote, onNoteCommit, print = false, guides = [] }: Props) => {
   const display = displayPaths(project);
   const warnings = wireWarnings(project);
   const hoveredBlock = hover?.block;
@@ -165,6 +167,19 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
         );
       })}
 
+      {guides.map(g => (
+        <line
+          key={`${g.axis}:${g.at}`}
+          x1={g.axis === 'x' ? g.at : g.from}
+          y1={g.axis === 'x' ? g.from : g.at}
+          x2={g.axis === 'x' ? g.at : g.to}
+          y2={g.axis === 'x' ? g.to : g.at}
+          stroke="var(--accent)"
+          stroke-width={1.5}
+          stroke-dasharray="6 4"
+          pointer-events="none"
+        />
+      ))}
       {preview && <polyline points={points(preview.pts)} fill="none" stroke={preview.colour} stroke-width={2.5} stroke-dasharray="6 4" pointer-events="none" />}
       {marquee && (
         <rect x={Math.min(marquee.a.x, marquee.b.x)} y={Math.min(marquee.a.y, marquee.b.y)} width={Math.abs(marquee.a.x - marquee.b.x)} height={Math.abs(marquee.a.y - marquee.b.y)} fill="#1f5fbf18" stroke="var(--accent)" stroke-dasharray="4 3" pointer-events="none" />
