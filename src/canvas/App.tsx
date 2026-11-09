@@ -22,6 +22,7 @@ import {
   type Command,
   type History,
 } from '../project/project.ts';
+import { projectFileName, readProjectFile } from '../project/projectFile.ts';
 import type { Block, Point, Project, Selection, WireEnd } from '../project/types.ts';
 import {
   blockCentre,
@@ -52,6 +53,7 @@ type ItemKind = keyof Selection;
 type Form = { block: Block | null } | null;
 
 const PASTE_OFFSET = { x: 40, y: 40 };
+const START_VIEW: View = { x: 0, y: 0, w: 1600, h: 1000 };
 
 const parsePin = (key: string): WireEnd => {
   const [blockId, pinId] = key.split(':');
@@ -95,7 +97,7 @@ export const App = () => {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Project | null>(null);
   const [selection, setSelection] = useState<Selection>(emptySelection());
-  const [view, setView] = useState<View>({ x: 0, y: 0, w: 1600, h: 1000 });
+  const [view, setView] = useState<View>(START_VIEW);
   const [draw, setDraw] = useState<Draw | null>(null);
   const [gesture, setGesture] = useState<Gesture | null>(null);
   const [hover, setHover] = useState<Hover>(null);
@@ -117,6 +119,8 @@ export const App = () => {
 
   const svgRef = useRef<SVGSVGElement>(null);
   const boardInput = useRef<HTMLInputElement>(null);
+  const projectInput = useRef<HTMLInputElement>(null);
+  const projectName = useRef('project');
   const saved = useRef<{ text: string; mtimeMs: number | null }>({ text: '', mtimeMs: null });
   const saving = useRef<Promise<void>>(Promise.resolve());
   const conflictRef = useRef(false);
@@ -441,6 +445,47 @@ export const App = () => {
     setStopped(true);
   };
 
+  const saveProjectAs = () => {
+    if (!present) return;
+    const name = window.prompt('Project name', projectName.current);
+    if (name === null) return;
+    const fileName = projectFileName(name);
+    projectName.current = fileName.replace(/\.json$/, '');
+    const url = URL.createObjectURL(new Blob([serialize(present)], { type: 'application/json' }));
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = fileName;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    setStatus(`Saved ${fileName} to your downloads.`);
+  };
+
+  const loadProject = async (file: File) => {
+    if (conflictRef.current) {
+      setStatus('Reload first: autosave has stopped, so a loaded project would not be kept.');
+      return;
+    }
+    const result = readProjectFile(await file.text());
+    if (!result.ok) {
+      setStatus(`Could not load ${file.name}: ${result.reason}.`);
+      return;
+    }
+    if (!window.confirm(`Replace the current layout with ${file.name}? Ctrl+Z brings it back until you close the app.`)) return;
+    updateHistory(h => commit(h, result.project));
+    projectName.current = file.name.replace(/\.json$/i, '');
+    const known = [...PALETTE, ...result.project.customColours].map(c => c.name);
+    setColours(current => (current.every(name => known.includes(name)) ? current : ['red']));
+    setSelection(emptySelection());
+    setDraw(null);
+    setDraft(null);
+    setGesture(null);
+    setHover(null);
+    setEditingNote(null);
+    setPlacingNote(false);
+    setView(START_VIEW);
+    setStatus(`Loaded ${file.name}.`);
+  };
+
   const readBoard = async (file: File) => {
     const response = await fetch('/api/kicad/connectors', { method: 'POST', body: await file.text() });
     if (response.ok) setImporting(await response.json());
@@ -598,6 +643,22 @@ export const App = () => {
             onChange={e => {
               const input = e.currentTarget;
               if (input.files?.[0]) void readBoard(input.files[0]);
+              input.value = '';
+            }}
+          />
+        </div>
+        <h2>Project</h2>
+        <div class="row">
+          <button onClick={saveProjectAs}>Save copy</button>
+          <button onClick={() => projectInput.current?.click()}>Load</button>
+          <input
+            ref={projectInput}
+            type="file"
+            accept=".json"
+            hidden
+            onChange={e => {
+              const input = e.currentTarget;
+              if (input.files?.[0]) void loadProject(input.files[0]);
               input.value = '';
             }}
           />

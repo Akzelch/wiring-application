@@ -21,6 +21,8 @@ Never stored: Zone membership, side-by-side lanes, undo history, zoom and pan. R
 
 Autosave runs about 1 second after an edit and sends the file's last-seen modification time. On a mismatch, autosave stops and the page shows "file changed on disk, reload".
 
+"Save copy" asks for a name and downloads the project as a `.json` file. "Load" picks such a file, asks for confirmation and replaces the layout as one undoable step, which autosave then writes to the working file. A file that is not a project, or whose Wires or Harnesses refer to missing items, is refused and the layout is left alone.
+
 ## Modules
 
 | Module | Interface | Tested |
@@ -29,6 +31,7 @@ Autosave runs about 1 second after an edit and sends the file's last-seen modifi
 | Routing | pure Wire geometry: stretch, kink, legal slide, lanes | through the interface |
 | KiCad import | `readConnectors(text)`, `mergeImport(project, connectors, ticked)` | through the interface, with the sample board |
 | Export | from/to rows and print view | rows through the interface |
+| Project file | `readProjectFile(text)`, `projectFileName(name)` | through the interface |
 | File store | Node server: load and save | through the interface |
 | Canvas | SVG rendering, selection, hotkeys | by hand in Firefox |
 
