@@ -25,7 +25,7 @@ export type WireEnd = { blockId: string; pinId: string };
 export type Wire = {
   id: string;
   from: WireEnd;
-  to: WireEnd;
+  to: WireEnd | null;
   corners: Point[];
   colours: string[];
 };

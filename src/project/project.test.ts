@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { displayPaths, wirePath, wireWarnings, WIRE_WIDTH } from '../routing/routing.ts';
+import { displayPaths, resumeDraw, wirePath, wireWarnings, WIRE_WIDTH } from '../routing/routing.ts';
 import {
   apply,
   commit,
@@ -213,6 +213,52 @@ test('a Zone created around a selection surrounds its Blocks and Notes with a ma
   const zoned = apply(start, { type: 'createZoneAround', name: 'ECU', selection });
   assert.deepEqual(zoned.zones, [{ id: 'z1', name: 'ECU', x: 270, y: 250, w: 320, h: 310 }]);
   assert.equal(apply(start, { type: 'createZoneAround', name: 'ECU', selection: emptySelection() }), start);
+});
+
+const unfinished = () =>
+  apply(twoBlocks(), {
+    type: 'addWire',
+    from: { blockId: 'b1', pinId: 'p1' },
+    to: null,
+    corners: [{ x: 600, y: 320 }, { x: 600, y: 500 }],
+    colours: ['red'],
+  });
+
+test('an unfinished Wire ends at its last corner, and that end stays put when its Block moves', () => {
+  const start = unfinished();
+  assert.deepEqual(wirePath(start, start.wires[0]).at(-1), { x: 600, y: 500 });
+  const moved = move(start, 'b1', 0, -40);
+  assert.deepEqual(wirePath(moved, moved.wires[0]).at(-1), { x: 600, y: 500 });
+  assert.deepEqual(wirePath(moved, moved.wires[0])[0], { x: 400, y: 280 });
+});
+
+test('sliding the last segment of an unfinished Wire moves its loose end', () => {
+  const slid = apply(unfinished(), { type: 'slideSegment', wireId: 'w1', index: 1, delta: { x: 50, y: 0 } });
+  assert.deepEqual(wirePath(slid, slid.wires[0]).at(-1), { x: 650, y: 500 });
+});
+
+test('an unfinished Wire can be resumed from its full route and finished on a Pin', () => {
+  const start = unfinished();
+  const draw = resumeDraw(start, start.wires[0]);
+  assert.equal(draw.pts.length, 3);
+  assert.deepEqual(draw.history.at(-1), draw.pts.slice(0, 2));
+  const finished = apply(start, {
+    type: 'setWireRoute',
+    wireId: 'w1',
+    to: { blockId: 'b2', pinId: 'p1' },
+    corners: [{ x: 600, y: 320 }, { x: 600, y: 500 }, { x: 800, y: 500 }, { x: 800, y: 320 }],
+  });
+  assert.equal(finished.wires.length, 1);
+  assert.deepEqual(wirePath(finished, finished.wires[0]).at(-1), { x: 900, y: 320 });
+});
+
+test('an unfinished Wire is copied with its start Block and deleted with it', () => {
+  const start = unfinished();
+  const selection = { ...emptySelection(), blocks: ['b1'] };
+  const pasted = apply(start, { type: 'paste', clipboard: copyItems(start, selection), offset: { x: 40, y: 40 } });
+  assert.equal(pasted.wires[1].to, null);
+  assert.deepEqual(pasted.wires[1].corners[1], { x: 640, y: 540 });
+  assert.deepEqual(apply(start, { type: 'deleteItems', selection }).wires, []);
 });
 
 test('colours: the base and second colour change independently', () => {

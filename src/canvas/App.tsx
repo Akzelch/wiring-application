@@ -24,6 +24,7 @@ import {
   noteCentre,
   passesOverPin,
   previewDraw,
+  resumeDraw,
   segments,
   snap,
   startDraw,
@@ -176,6 +177,15 @@ export const App = () => {
     }
   };
 
+  const finishDraw = (current: Draw, to: WireEnd | null, corners: Point[]) => {
+    dispatch(
+      current.wireId
+        ? { type: 'setWireRoute', wireId: current.wireId, to, corners }
+        : { type: 'addWire', from: current.from, to, corners, colours },
+    );
+    setDraw(null);
+  };
+
   const onPointerDown = (e: PointerEvent) => {
     if (!project || !present) return;
     const data = (e.target as SVGElement).dataset ?? {};
@@ -193,7 +203,7 @@ export const App = () => {
     if (draw) {
       const pinKey = data.pin;
       const fromKey = `${draw.from.blockId}:${draw.from.pinId}`;
-      if (pinKey === fromKey) return;
+      if (pinKey === fromKey || (!pinKey && e.detail >= 2)) return;
       const to = pinKey ? parsePin(pinKey) : null;
       const pts = clean(previewDraw(project, draw, cursorNow, to));
       if (passesOverPin(project, pts)) {
@@ -202,8 +212,7 @@ export const App = () => {
       }
       setStatus('');
       if (to) {
-        dispatch({ type: 'addWire', from: draw.from, to, corners: pts.slice(1, -1), colours });
-        setDraw(null);
+        finishDraw(draw, to, pts.slice(1, -1));
       } else {
         setDraw({ ...draw, history: [...draw.history, draw.pts], pts, flip: false });
       }
@@ -213,6 +222,12 @@ export const App = () => {
     if (data.pin) {
       setSelection(emptySelection());
       setDraw(startDraw(project, parsePin(data.pin)));
+      return;
+    }
+
+    if (data.loose) {
+      setSelection(emptySelection());
+      setDraw(resumeDraw(project, project.wires.find(w => w.id === data.loose)!));
       return;
     }
 
@@ -337,6 +352,11 @@ export const App = () => {
 
   const onDoubleClick = (e: MouseEvent) => {
     if (!project) return;
+    if (draw) {
+      if (draw.pts.length < 2) setDraw(null);
+      else finishDraw(draw, null, draw.pts.slice(1));
+      return;
+    }
     const item = (e.target as SVGElement).dataset?.item;
     if (!item) return;
     const [kind, id] = item.split(':') as [ItemKind, string];
@@ -533,6 +553,8 @@ export const App = () => {
           <dt>W</dt><dd>Wire from hovered Pin</dd>
           <dt>Space</dt><dd>Flip bend</dd>
           <dt>Backspace</dt><dd>Remove last corner</dd>
+          <dt>Double-click</dt><dd>End Wire unfinished</dd>
+          <dt>Click red square</dt><dd>Continue that Wire</dd>
           <dt>N</dt><dd>Place a Note</dd>
           <dt>R</dt><dd>Rotate</dd>
           <dt>H</dt><dd>Harness from Wires</dd>

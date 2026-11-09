@@ -49,7 +49,7 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
   const hoveredBlock = hover?.block;
   const wireCount = (blockId: string, pinId: string) =>
     project.wires.filter(
-      w => (w.from.blockId === blockId && w.from.pinId === pinId) || (w.to.blockId === blockId && w.to.pinId === pinId),
+      w => (w.from.blockId === blockId && w.from.pinId === pinId) || (w.to?.blockId === blockId && w.to.pinId === pinId),
     ).length;
 
   return (
@@ -68,7 +68,7 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
 
       {project.wires.map(w => {
         const path = display.get(w.id)!;
-        const lit = selection.wires.includes(w.id) || hover?.wire === w.id || (hoveredBlock && (w.from.blockId === hoveredBlock || w.to.blockId === hoveredBlock));
+        const lit = selection.wires.includes(w.id) || hover?.wire === w.id || (hoveredBlock && (w.from.blockId === hoveredBlock || w.to?.blockId === hoveredBlock));
         const opacity = hoveredBlock && !lit ? 0.25 : 1;
         const width = lit ? 3.5 : WIRE_WIDTH;
         return (
@@ -137,6 +137,13 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
           );
         }),
       )}
+
+      {project.wires.filter(w => !w.to).map(w => {
+        const end = display.get(w.id)!.at(-1)!;
+        return (
+          <rect key={w.id} data-loose={w.id} x={end.x - 6} y={end.y - 6} width={12} height={12} fill="#fff" stroke="var(--warn)" stroke-width={2} style="cursor:crosshair" />
+        );
+      })}
 
       {project.harnesses.map(h => {
         const { start, control, end } = harnessArc(project, h);

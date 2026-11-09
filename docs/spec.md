@@ -44,6 +44,7 @@ Rewrite rather than reuse the [canvas prototype](https://github.com/Akzelch/wiri
 ## Wires
 
 - Drawing is KiCad-style: click a Pin (or `W`), click empty space to add a right-angle bend and corner, `Space` flips the bend, `Backspace` removes the last corner, and the Wire arrives straight into the end Pin. A Pin may take several Wires: click it again to start another. A Pin with more than one Wire is drawn dark. There is no splice object and no auto-routing.
+- Double-clicking while drawing ends the Wire unfinished at its last corner, with no end Pin. A marker shows the loose end; clicking it continues drawing, and `Backspace` can then remove earlier corners. Moving the start Block leaves the loose end where it is. Copying its start Block copies it. The PDF lists unfinished Wires under Warnings and shows "unfinished" in To.
 - Dragging or rotating a Block changes only the segments at that Block's end. A straight Wire gains a jog at its midpoint when needed, which disappears if the Block moves back. Moving a Block past its own Wires is allowed.
 - A segment can be dragged to slide it.
 - A Wire never runs along a Block's side out of a Pin; it kinks out 20 units (one Pin spacing) first.

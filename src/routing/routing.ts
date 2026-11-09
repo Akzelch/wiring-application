@@ -60,7 +60,7 @@ const endSide = (project: Project, end: WireEnd): Side =>
 export const wirePath = (project: Project, w: Wire): Point[] => [
   endPoint(project, w.from),
   ...w.corners,
-  endPoint(project, w.to),
+  ...(w.to ? [endPoint(project, w.to)] : []),
 ];
 
 const same = (a: Point, b: Point) => a.x === b.x && a.y === b.y;
@@ -94,7 +94,9 @@ const guard = (pts: Point[], fromSide: Side, toSide: Side): Point[] =>
   guardStart([...guardStart(pts, fromSide)].reverse(), toSide).reverse();
 
 const guardedCorners = (project: Project, w: Wire, pts: Point[]): Point[] =>
-  guard(pts, endSide(project, w.from), endSide(project, w.to)).slice(1, -1);
+  w.to
+    ? guard(pts, endSide(project, w.from), endSide(project, w.to)).slice(1, -1)
+    : guardStart(pts, endSide(project, w.from)).slice(1);
 
 const dogleg = (a: Point, b: Point, moved: Point): Point[] => {
   const mx = snap((a.x + b.x) / 2);
@@ -120,12 +122,10 @@ const isZero = (d: Point) => d.x === 0 && d.y === 0;
 // Returns `after`'s Wires rerouted for any Pins that moved between the two projects.
 export const followPins = (before: Project, after: Project): Wire[] =>
   after.wires.map(w => {
-    const a0 = endPoint(before, w.from);
-    const z0 = endPoint(before, w.to);
-    const da = deltaOf(a0, endPoint(after, w.from));
-    const dz = deltaOf(z0, endPoint(after, w.to));
+    const path = wirePath(before, w);
+    const da = deltaOf(path[0], endPoint(after, w.from));
+    const dz = w.to ? deltaOf(path[path.length - 1], endPoint(after, w.to)) : { x: 0, y: 0 };
     if (isZero(da) && isZero(dz)) return w;
-    const path = [a0, ...w.corners, z0];
     if (same(da, dz)) {
       const shifted = path.map(p => ({ x: p.x + da.x, y: p.y + da.y }));
       return { ...w, corners: guardedCorners(after, w, shifted) };
@@ -142,7 +142,7 @@ export const slidCorners = (project: Project, w: Wire, index: number, delta: Poi
   const padded = [
     ...(index === 0 ? [base[0]] : []),
     ...base,
-    ...(index + 1 === base.length - 1 ? [base[base.length - 1]] : []),
+    ...(w.to && index + 1 === base.length - 1 ? [base[base.length - 1]] : []),
   ];
   const first = index === 0 ? 1 : index;
   const moved = padded.map((q, k) =>
@@ -175,7 +175,18 @@ export const passesOverPin = (project: Project, pts: Point[]): boolean => {
 export const wireWarnings = (project: Project): Set<string> =>
   new Set(project.wires.filter(w => passesOverPin(project, clean(wirePath(project, w)))).map(w => w.id));
 
-export type Draw = { from: WireEnd; pts: Point[]; history: Point[][]; flip: boolean };
+export type Draw = { from: WireEnd; pts: Point[]; history: Point[][]; flip: boolean; wireId?: string };
+
+export const resumeDraw = (project: Project, w: Wire): Draw => {
+  const pts = wirePath(project, w);
+  return {
+    from: w.from,
+    pts,
+    history: pts.slice(1).map((_, i) => pts.slice(0, i + 1)),
+    flip: false,
+    wireId: w.id,
+  };
+};
 
 export const startDraw = (project: Project, from: WireEnd): Draw => ({
   from,

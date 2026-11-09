@@ -80,7 +80,8 @@ export type Command =
   | { type: 'rotateBlocks'; blockIds: string[] }
   | { type: 'moveItems'; selection: Selection; delta: Point }
   | { type: 'deleteItems'; selection: Selection }
-  | { type: 'addWire'; from: WireEnd; to: WireEnd; corners: Point[]; colours: string[] }
+  | { type: 'addWire'; from: WireEnd; to: WireEnd | null; corners: Point[]; colours: string[] }
+  | { type: 'setWireRoute'; wireId: string; to: WireEnd | null; corners: Point[] }
   | { type: 'slideSegment'; wireId: string; index: number; delta: Point }
   | { type: 'setWireColours'; wireIds: string[]; base?: string; second?: string | null }
   | { type: 'addCustomColour'; colour: Colour }
@@ -157,7 +158,7 @@ const pruneHarnesses = (project: Project, keepWire: (id: string) => boolean): Pr
 
 const deleteItems = (project: Project, s: Selection): Project => {
   const wires = project.wires.filter(
-    w => !s.wires.includes(w.id) && !s.blocks.includes(w.from.blockId) && !s.blocks.includes(w.to.blockId),
+    w => !s.wires.includes(w.id) && !s.blocks.includes(w.from.blockId) && !(w.to && s.blocks.includes(w.to.blockId)),
   );
   const liveWires = new Set(wires.map(w => w.id));
   return pruneHarnesses(
@@ -175,7 +176,7 @@ const deleteItems = (project: Project, s: Selection): Project => {
 
 export const copyItems = (project: Project, s: Selection): Clipboard => ({
   blocks: project.blocks.filter(b => s.blocks.includes(b.id)),
-  wires: project.wires.filter(w => s.blocks.includes(w.from.blockId) && s.blocks.includes(w.to.blockId)),
+  wires: project.wires.filter(w => s.blocks.includes(w.from.blockId) && (!w.to || s.blocks.includes(w.to.blockId))),
   notes: project.notes.filter(n => s.notes.includes(n.id)),
 });
 
@@ -197,7 +198,7 @@ const paste = (project: Project, clipboard: Clipboard, offset: Point): Project =
         ...w,
         id: nextId('w', all),
         from: { ...w.from, blockId: blockIdMap.get(w.from.blockId)! },
-        to: { ...w.to, blockId: blockIdMap.get(w.to.blockId)! },
+        to: w.to && { ...w.to, blockId: blockIdMap.get(w.to.blockId)! },
         corners: w.corners.map(shift),
       },
     ],
@@ -256,6 +257,11 @@ export const apply = (project: Project, command: Command): Project => {
       };
       return { ...project, wires: [...project.wires, wire] };
     }
+    case 'setWireRoute':
+      return {
+        ...project,
+        wires: replaced(project.wires, command.wireId, w => ({ ...w, to: command.to, corners: command.corners })),
+      };
     case 'slideSegment': {
       const wire = project.wires.find(w => w.id === command.wireId)!;
       const slid = { ...wire, corners: slidCorners(project, wire, command.index, command.delta) };

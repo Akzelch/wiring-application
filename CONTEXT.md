@@ -25,7 +25,7 @@ The electrical signal name KiCad gives a Pin, such as "GND". Several Pins on dif
 _Avoid_: Signal
 
 **Wire**:
-One conductor between two Pins, with one or two colours (a base colour and an optional second colour, such as green/yellow).
+One conductor between two Pins, with one or two colours (a base colour and an optional second colour, such as green/yellow). An unfinished Wire has its start Pin but no end Pin yet.
 _Avoid_: Cable, connection, line
 
 **Harness**:
