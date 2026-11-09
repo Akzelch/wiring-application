@@ -97,8 +97,10 @@ export type Command =
 
 const numberOf = (id: string) => Number(id.replace(/^\D+/, ''));
 
-const nextId = (prefix: string, items: { id: string }[]): string =>
+export const nextId = (prefix: string, items: { id: string }[]): string =>
   `${prefix}${Math.max(0, ...items.map(i => numberOf(i.id))) + 1}`;
+
+export const naturalCompare = (a: string, b: string): number => a.localeCompare(b, 'en', { numeric: true });
 
 const normaliseOrders = (pins: Pin[]): Pin[] => {
   const orderInSide = (pin: Pin, index: number) =>
@@ -186,7 +188,13 @@ const paste = (project: Project, clipboard: Clipboard, offset: Point): Project =
     const id = nextId('b', all);
     return [
       ...all,
-      { ...shift(b), id, name: nextFreeName(all.map(x => x.name), b.name), kicadLinked: false },
+      {
+        ...shift(b),
+        id,
+        name: nextFreeName(all.map(x => x.name), b.name),
+        kicadLinked: false,
+        pins: b.pins.map(({ leftover: _leftover, ...pin }) => pin),
+      },
     ];
   }, project.blocks);
   const added = blocks.slice(project.blocks.length);

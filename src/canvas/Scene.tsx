@@ -5,6 +5,7 @@ import {
   blockSize,
   displayPaths,
   harnessArc,
+  harnessMidpoint,
   noteSize,
   pinPoint,
   segments,
@@ -23,6 +24,7 @@ type Props = {
   marquee: Marquee;
   editingNote: string | null;
   onNoteCommit: (id: string, text: string) => void;
+  print?: boolean;
 };
 
 const points = (pts: Point[]) => pts.map(p => `${p.x},${p.y}`).join(' ');
@@ -43,7 +45,9 @@ const NoteEditor = ({ text, onCommit }: { text: string; onCommit: (text: string)
   );
 };
 
-export const Scene = ({ project, selection, hover, preview, marquee, editingNote, onNoteCommit }: Props) => {
+const PRINT_WARNING_WIDTH = 4.5;
+
+export const Scene = ({ project, selection, hover, preview, marquee, editingNote, onNoteCommit, print = false }: Props) => {
   const display = displayPaths(project);
   const warnings = wireWarnings(project);
   const hoveredBlock = hover?.block;
@@ -61,7 +65,7 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
             <rect x={z.x} y={z.y} width={z.w} height={z.h} fill="#1f5fbf0f" stroke={selected ? 'var(--accent)' : '#9a9a92'} stroke-width={selected ? 2 : 1} pointer-events="none" />
             <rect data-item={`zones:${z.id}`} x={z.x} y={z.y} width={z.w} height={22} fill="#1f5fbf1c" style="cursor:move" />
             <text class="zone-name" x={z.x + 6} y={z.y + 16}>{z.name}</text>
-            <rect data-resize={z.id} x={z.x + z.w - 10} y={z.y + z.h - 10} width={10} height={10} fill="#9a9a92" style="cursor:nwse-resize" />
+            {!print && <rect data-resize={z.id} x={z.x + z.w - 10} y={z.y + z.h - 10} width={10} height={10} fill="#9a9a92" style="cursor:nwse-resize" />}
           </g>
         );
       })}
@@ -70,13 +74,16 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
         const path = display.get(w.id)!;
         const lit = selection.wires.includes(w.id) || hover?.wire === w.id || (hoveredBlock && (w.from.blockId === hoveredBlock || w.to?.blockId === hoveredBlock));
         const opacity = hoveredBlock && !lit ? 0.25 : 1;
-        const width = lit ? 3.5 : WIRE_WIDTH;
+        const warned = warnings.has(w.id);
+        const width = print && warned ? PRINT_WARNING_WIDTH : lit ? 3.5 : WIRE_WIDTH;
+        const marker = print && warned ? harnessMidpoint(project, w) : null;
         return (
           <g key={w.id}>
-            {warnings.has(w.id) && <polyline points={points(path)} fill="none" stroke="var(--warn)" stroke-width={9} stroke-dasharray="10 6" opacity={0.55} pointer-events="none" />}
+            {warned && !print && <polyline points={points(path)} fill="none" stroke="var(--warn)" stroke-width={9} stroke-dasharray="10 6" opacity={0.55} pointer-events="none" />}
             <polyline points={points(path)} fill="none" stroke={colourHex(project, w.colours[0])} stroke-width={width} opacity={opacity} pointer-events="none" />
             {w.colours[1] && <polyline points={points(path)} fill="none" stroke={colourHex(project, w.colours[1])} stroke-width={width} stroke-dasharray="8 8" opacity={opacity} pointer-events="none" />}
-            {segments(path).map((s, i) => (
+            {marker && <text class="warning-mark" x={marker.x + 6} y={marker.y - 6}>!</text>}
+            {!print && segments(path).map((s, i) => (
               <line key={i} data-seg={`${w.id}:${i}`} x1={s.a.x} y1={s.a.y} x2={s.b.x} y2={s.b.y} stroke="transparent" stroke-width={10} style={{ cursor: s.a.y === s.b.y ? 'ns-resize' : 'ew-resize' }} />
             ))}
           </g>
@@ -133,7 +140,7 @@ export const Scene = ({ project, selection, hover, preview, marquee, editingNote
           const key = `${b.id}:${p.id}`;
           const on = hover?.pin === key;
           return (
-            <circle key={key} data-pin={key} cx={q.x} cy={q.y} r={on ? 7 : 4.5} fill={on ? 'var(--accent)' : wireCount(b.id, p.id) > 1 ? '#222' : '#fff'} stroke="#333" style="cursor:crosshair" />
+            <circle key={key} data-pin={key} cx={q.x} cy={q.y} r={on ? 7 : 4.5} fill={on ? 'var(--accent)' : p.leftover ? 'var(--warn)' : wireCount(b.id, p.id) > 1 ? '#222' : '#fff'} stroke="#333" style="cursor:crosshair" />
           );
         }),
       )}

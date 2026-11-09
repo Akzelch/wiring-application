@@ -1,6 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import { createServer, type IncomingMessage, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
+import { readConnectors } from '../kicad/kicad.ts';
 import type { FileStore } from './fileStore.ts';
 
 export type Assets = { html: string; css: string; js: string };
@@ -29,6 +30,9 @@ const buildServer = (store: FileStore, assets: Assets): Server => {
         const { text, mtimeMs } = JSON.parse(await readBody(request));
         const saved = await store.save(text, mtimeMs);
         return json(saved.ok ? 200 : 409, saved);
+      }
+      if (request.url === '/api/kicad/connectors' && request.method === 'POST') {
+        return json(200, readConnectors(await readBody(request)));
       }
       const file = files[request.url ?? ''];
       if (file && request.method === 'GET') return send(200, file[1], await readFile(file[0]));

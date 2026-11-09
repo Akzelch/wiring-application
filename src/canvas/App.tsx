@@ -1,4 +1,6 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { PrintView } from '../export/PrintView.tsx';
+import { checklist, mergeImport, type Connector, type ImportReport } from '../kicad/kicad.ts';
 import {
   apply,
   colourHex,
@@ -32,6 +34,7 @@ import {
   type Draw,
 } from '../routing/routing.ts';
 import { BlockForm } from './BlockForm.tsx';
+import { ImportChecklist, ImportReportView } from './ImportDialog.tsx';
 import { Scene, type Hover } from './Scene.tsx';
 
 type View = { x: number; y: number; w: number; h: number };
@@ -103,8 +106,11 @@ export const App = () => {
   const [conflict, setConflict] = useState(false);
   const [customName, setCustomName] = useState('');
   const [customHex, setCustomHex] = useState('#00aaaa');
+  const [importing, setImporting] = useState<Connector[] | null>(null);
+  const [importReport, setImportReport] = useState<ImportReport | null>(null);
 
   const svgRef = useRef<SVGSVGElement>(null);
+  const boardInput = useRef<HTMLInputElement>(null);
   const saved = useRef<{ text: string; mtimeMs: number | null }>({ text: '', mtimeMs: null });
   const saving = useRef<Promise<void>>(Promise.resolve());
   const conflictRef = useRef(false);
@@ -153,6 +159,7 @@ export const App = () => {
   }, [present]);
 
   const project = draft ?? present ?? null;
+  const printView = useMemo(() => (present ? <PrintView project={present} /> : null), [present]);
 
   const toWorld = (e: { clientX: number; clientY: number }): Point => {
     const p = new DOMPoint(e.clientX, e.clientY).matrixTransform(svgRef.current!.getScreenCTM()!.inverse());
@@ -399,6 +406,20 @@ export const App = () => {
     dispatch({ type: 'createZone', name, x: c.x - 200, y: c.y - 150, w: 400, h: 300 });
   };
 
+  const readBoard = async (file: File) => {
+    const response = await fetch('/api/kicad/connectors', { method: 'POST', body: await file.text() });
+    if (response.ok) setImporting(await response.json());
+    else setStatus(`Could not read ${file.name}.`);
+  };
+
+  const finishImport = (connectors: Connector[], ticked: string[]) => {
+    if (!present) return;
+    const { project: next, report } = mergeImport(present, connectors, ticked);
+    updateHistory(h => commit(h, next));
+    setImporting(null);
+    setImportReport(report);
+  };
+
   const deleteSelected = () => {
     if (isEmpty(selection)) return;
     dispatch({ type: 'deleteItems', selection });
@@ -408,7 +429,7 @@ export const App = () => {
   const onKeyDown = (e: KeyboardEvent) => {
     if (!project || !present) return;
     const tag = (e.target as HTMLElement).tagName;
-    if (form || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+    if (form || importing || importReport || tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
     const key = e.key.toLowerCase();
 
     if (e.ctrlKey || e.metaKey) {
@@ -519,6 +540,22 @@ export const App = () => {
         <div class="row">
           <button onClick={() => setForm({ block: null })}>Block</button>
           <button onClick={addZone}>Zone</button>
+          <button onClick={() => boardInput.current?.click()}>Import KiCad</button>
+          <input
+            ref={boardInput}
+            type="file"
+            accept=".kicad_pcb"
+            hidden
+            onChange={e => {
+              const input = e.currentTarget;
+              if (input.files?.[0]) void readBoard(input.files[0]);
+              input.value = '';
+            }}
+          />
+        </div>
+        <h2>Export</h2>
+        <div class="row">
+          <button onClick={() => window.print()}>Print to PDF</button>
         </div>
         <h2>Colour</h2>
         <div class="row">
@@ -585,6 +622,15 @@ export const App = () => {
           }}
         />
       )}
+      {importing && (
+        <ImportChecklist
+          entries={checklist(project, importing)}
+          onCancel={() => setImporting(null)}
+          onImport={ticked => finishImport(importing, ticked)}
+        />
+      )}
+      {importReport && <ImportReportView report={importReport} onClose={() => setImportReport(null)} />}
+      {printView}
     </div>
   );
 };

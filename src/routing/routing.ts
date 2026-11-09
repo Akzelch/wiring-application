@@ -172,8 +172,15 @@ export const passesOverPin = (project: Project, pts: Point[]): boolean => {
   );
 };
 
+export const onLeftoverPin = (project: Project, w: Wire): boolean =>
+  [w.from, ...(w.to ? [w.to] : [])].some(end => pinOf(blockOf(project, end.blockId), end.pinId).leftover);
+
 export const wireWarnings = (project: Project): Set<string> =>
-  new Set(project.wires.filter(w => passesOverPin(project, clean(wirePath(project, w)))).map(w => w.id));
+  new Set(
+    project.wires
+      .filter(w => onLeftoverPin(project, w) || passesOverPin(project, clean(wirePath(project, w))))
+      .map(w => w.id),
+  );
 
 export type Draw = { from: WireEnd; pts: Point[]; history: Point[][]; flip: boolean; wireId?: string };
 

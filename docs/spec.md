@@ -11,7 +11,7 @@ TypeScript, Preact and esbuild in the browser, with a small Node server bound to
 One pretty-printed JSON file with stable IDs and every list sorted by ID: `version`, `blocks`, `wires`, `harnesses`, `zones`, `notes`, `customColours`.
 
 - Block: `id`, `name`, `label`, `kicadLinked`, `x`, `y`, `pins`.
-- Pin: `id`, `number`, `net`, `userName`, `side`, `order`.
+- Pin: `id`, `number`, `net`, `userName`, `side`, `order`, and `leftover: true` on a Pin kept only because a Wire uses it after it disappeared from the board.
 - Wire: `id`, `from` and `to` as `{blockId, pinId}`, `corners`, `colours` (one or two).
 - Harness: `id`, `name`, `wireIds`, arc position.
 - Zone: `id`, `name`, rectangle.

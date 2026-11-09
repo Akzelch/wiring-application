@@ -8,6 +8,7 @@ export type Pin = {
   userName: string;
   side: Side;
   order: number;
+  leftover?: true;
 };
 
 export type Block = {
