@@ -4,6 +4,8 @@ export const GRID = 10;
 export const PITCH = 20;
 export const STUB = 20;
 export const WIRE_WIDTH = 1.8;
+const HARNESS_OVERHANG = 8;
+const HARNESS_GAP = 12;
 
 export const snap = (v: number): number => Math.round(v / GRID) * GRID;
 
@@ -235,8 +237,9 @@ type LaneSegment = {
   end: number;
   turnStart: number;
   turnEnd: number;
+  harness: string | null;
 };
-type Placed = LaneSegment & { lane: number };
+type Placed = LaneSegment & { offset: number };
 
 const shiftRoute = (pts: Point[], offsets: number[]): Point[] => {
   const segs = segments(pts).map((s, i) => {
@@ -253,7 +256,7 @@ const shiftRoute = (pts: Point[], offsets: number[]): Point[] => {
   });
 };
 
-const describeSegments = (routes: { w: Wire; pts: Point[] }[]): LaneSegment[] =>
+const describeSegments = (routes: { w: Wire; pts: Point[] }[], harnessOf: Map<string, string>): LaneSegment[] =>
   routes.flatMap(r =>
     segments(r.pts).map((s, i, all) => {
       const horizontal = s.a.y === s.b.y;
@@ -273,6 +276,7 @@ const describeSegments = (routes: { w: Wire; pts: Point[] }[]): LaneSegment[] =>
         end: along(hi),
         turnStart: turnAt(lo, startFirst ? before : after),
         turnEnd: turnAt(hi, startFirst ? after : before),
+        harness: harnessOf.get(r.w.id) ?? null,
       };
     }),
   );
@@ -298,19 +302,30 @@ const clusterSegments = (segs: LaneSegment[]): LaneSegment[][] =>
     }, [])
     .map(c => c.items);
 
-const assignLanes = (items: LaneSegment[]) => {
-  const placed = [...items].sort(compareLanes).reduce<Placed[]>((done, s) => {
-    const lane = Math.max(-1, ...done.filter(d => overlaps(d, s)).map(d => d.lane)) + 1;
-    return [...done, { ...s, lane }];
-  }, []);
-  const centre = Math.max(...placed.map(p => p.lane)) / 2;
-  return placed.map(p => ({ ...p, slot: p.lane - centre }));
+const groupOf = (s: LaneSegment) => s.harness ?? s.wire;
+
+const groupedByHarness = (items: LaneSegment[]): LaneSegment[] => {
+  const sorted = [...items].sort(compareLanes);
+  return [...new Set(sorted.map(groupOf))].flatMap(group => sorted.filter(s => groupOf(s) === group));
 };
 
-// Overlapping Wires are drawn side by side, exactly touching; stored routes are untouched.
+const laneSpacing = (a: LaneSegment, b: LaneSegment): number =>
+  (a.harness || b.harness) && groupOf(a) !== groupOf(b) ? WIRE_WIDTH + HARNESS_GAP : WIRE_WIDTH;
+
+const assignLanes = (items: LaneSegment[]) => {
+  const placed = groupedByHarness(items).reduce<Placed[]>((done, s) => {
+    const offset = Math.max(0, ...done.filter(d => overlaps(d, s)).map(d => d.offset + laneSpacing(d, s)));
+    return [...done, { ...s, offset }];
+  }, []);
+  const centre = Math.max(...placed.map(p => p.offset)) / 2;
+  return placed.map(p => ({ ...p, slot: p.offset - centre }));
+};
+
+// Overlapping Wires are drawn side by side, exactly touching, with a gap around a Harness; stored routes are untouched.
 export const displayPaths = (project: Project): Map<string, Point[]> => {
   const routes = project.wires.map(w => ({ w, pts: wirePath(project, w) }));
-  const segs = describeSegments(routes);
+  const harnessOf = new Map(project.harnesses.flatMap(h => h.wireIds.map((id): [string, string] => [id, h.id])));
+  const segs = describeSegments(routes, harnessOf);
   const keyOf = (s: LaneSegment) => `${s.horizontal}:${s.line}`;
   const lines = [...new Set(segs.map(keyOf))];
   const lanes = lines.flatMap(key => clusterSegments(segs.filter(s => keyOf(s) === key)).flatMap(assignLanes));
@@ -318,17 +333,20 @@ export const displayPaths = (project: Project): Map<string, Point[]> => {
   return new Map(
     routes.map(r => [
       r.w.id,
-      shiftRoute(r.pts, r.pts.slice(1).map((_, i) => slotOf.get(`${r.w.id}:${i}`)! * WIRE_WIDTH)),
+      shiftRoute(r.pts, r.pts.slice(1).map((_, i) => slotOf.get(`${r.w.id}:${i}`)!)),
     ]),
   );
 };
 
-const nearestOnPath = (pts: Point[], target: Point): Point =>
+type PathHit = Point & { across: Point };
+
+const nearestOnPath = (pts: Point[], target: Point): PathHit =>
   segments(pts)
     .map(({ a, b }) => {
       const length = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
       const t = length === 0 ? 0 : Math.max(0, Math.min(1, ((target.x - a.x) * (b.x - a.x) + (target.y - a.y) * (b.y - a.y)) / length));
-      return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+      const across = a.y === b.y ? { x: 0, y: 1 } : { x: 1, y: 0 };
+      return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y), across };
     })
     .reduce((best, p) => (distance(p, target) < distance(best, target) ? p : best));
 
@@ -346,9 +364,11 @@ export const harnessArc = (project: Project, h: Harness): { start: Point; contro
   const hits = h.wireIds.map(id => nearestOnPath(paths.get(id)!, h.arc));
   const pairs = hits.flatMap(a => hits.map(b => ({ a, b })));
   const { a, b } = pairs.reduce((best, p) => (distance(p.a, p.b) > distance(best.a, best.b) ? p : best));
-  const start = distance(a, b) < 16 ? { x: a.x - 12, y: a.y - 12 } : a;
-  const end = distance(a, b) < 16 ? { x: a.x + 12, y: a.y + 12 } : b;
-  const length = Math.max(1, distance(start, end));
+  const span = distance(a, b);
+  const along = span < 0.5 ? a.across : { x: (b.x - a.x) / span, y: (b.y - a.y) / span };
+  const start = { x: a.x - along.x * HARNESS_OVERHANG, y: a.y - along.y * HARNESS_OVERHANG };
+  const end = { x: b.x + along.x * HARNESS_OVERHANG, y: b.y + along.y * HARNESS_OVERHANG };
+  const length = distance(start, end);
   const bulge = Math.min(24, length / 3);
   const control = {
     x: (start.x + end.x) / 2 + ((end.y - start.y) / length) * bulge,

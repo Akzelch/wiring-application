@@ -49,7 +49,7 @@ Rewrite rather than reuse the [canvas prototype](https://github.com/Akzelch/wiri
 - A segment can be dragged to slide it.
 - A Wire never runs along a Block's side out of a Pin; it kinks out 20 units (one Pin spacing) first.
 - A Wire never passes over a Pin that is not its own end: sliding stops at the last legal position, and a drawing click that would cross a Pin is refused. If moving a Block puts a Pin onto another Wire, the move is allowed and that Wire is drawn in the loud warning style.
-- Overlapping Wires are drawn side by side, exactly touching, until they split, each on the side it turns towards. This affects drawing only.
+- Overlapping Wires are drawn side by side, exactly touching, until they split, each on the side it turns towards. A Harness's Wires are drawn together, with a gap to Wires outside it, so its marker does not reach them. This affects drawing only.
 - Colours: black, brown, red, orange, yellow, green, blue, violet, grey, white, pink, plus user-defined colours. Two colours draw as alternating dashes. New Wires reuse the last colour. A picker panel handles the second colour and custom colours.
 - Readability: hovering a Block highlights its Wires and dims the others; zoom and pan.
 

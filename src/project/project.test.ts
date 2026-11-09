@@ -194,6 +194,42 @@ test('a Harness marker and name follow its Wires when they move', () => {
   });
 });
 
+const bundleOfThree = () => straight(straight(straight(twoBlocks())));
+const laneY = (project: Project, wireId: string) => displayPaths(project).get(wireId)![0].y;
+
+test('a Harness marker crosses touching Wires at right angles and overhangs them', () => {
+  const start = run(straight(straight(twoBlocks())), { type: 'createHarness', name: 'A', wireIds: ['w1', 'w2'] });
+  const { start: a, end: b } = harnessArc(start, start.harnesses[0]);
+  const ys = [laneY(start, 'w1'), laneY(start, 'w2')];
+  assert.ok(Math.abs(ys[0] - ys[1]) - WIRE_WIDTH < 1e-9);
+  assert.equal(a.x, b.x);
+  assert.ok(Math.min(a.y, b.y) < Math.min(...ys) && Math.max(a.y, b.y) > Math.max(...ys));
+});
+
+test('a one-Wire Harness marker crosses its Wire at right angles', () => {
+  const start = run(straight(twoBlocks()), { type: 'createHarness', name: 'A', wireIds: ['w1'] });
+  const { start: a, end: b } = harnessArc(start, start.harnesses[0]);
+  assert.equal(a.x, b.x);
+  assert.ok(Math.min(a.y, b.y) < 320 && Math.max(a.y, b.y) > 320);
+});
+
+test('Wires outside a Harness sit clear of its marker, and its own Wires stay touching', () => {
+  const start = run(bundleOfThree(), { type: 'createHarness', name: 'A', wireIds: ['w1', 'w3'] });
+  const { start: a, end: b } = harnessArc(start, start.harnesses[0]);
+  const [inA, inB, outside] = [laneY(start, 'w1'), laneY(start, 'w3'), laneY(start, 'w2')];
+  assert.ok(Math.abs(Math.abs(inA - inB) - WIRE_WIDTH) < 1e-9);
+  const low = Math.min(a.y, b.y);
+  const high = Math.max(a.y, b.y);
+  assert.ok(outside < low - WIRE_WIDTH || outside > high + WIRE_WIDTH);
+  assert.deepEqual(start.wires.map(w => w.corners), [[], [], []]);
+});
+
+test('Wires with no Harness still touch', () => {
+  const start = bundleOfThree();
+  const ys = ['w1', 'w2', 'w3'].map(id => laneY(start, id)).sort((a, b) => a - b);
+  assert.ok(Math.abs(ys[1] - ys[0] - WIRE_WIDTH) < 1e-9 && Math.abs(ys[2] - ys[1] - WIRE_WIDTH) < 1e-9);
+});
+
 test('deleting a Block removes its Wires and empties Harnesses', () => {
   const start = run(straight(twoBlocks()), { type: 'createHarness', name: 'A', wireIds: ['w1'] });
   const after = apply(start, { type: 'deleteItems', selection: { ...emptySelection(), blocks: ['b1'] } });
