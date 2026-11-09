@@ -86,6 +86,29 @@ test('a row prints the Wire size and exactly the distance set between its Zones'
   assert.deepEqual([row.gauge, row.lengthMm], ['1.5 mm² / AWG 16', '2400']);
 });
 
+test('a length delta is added only to the chosen Wires, and can be negative or cleared', () => {
+  const zoned = run(
+    base(),
+    wire('p1', 'p1', ['red']),
+    wire('p2', 'p2', ['red']),
+    wire('p5', 'p3', ['red']),
+    { type: 'createZone', name: 'Front', x: 250, y: 250, w: 300, h: 400 },
+    { type: 'createZone', name: 'Rear', x: 850, y: 250, w: 300, h: 300 },
+    { type: 'setZoneDistance', zoneA: 'z1', zoneB: 'z2', mm: 2400 },
+    { type: 'setWireLengthDelta', wireIds: ['w1'], mm: 150 },
+    { type: 'setWireLengthDelta', wireIds: ['w2'], mm: -100 },
+  );
+  assert.deepEqual(fromToRows(zoned).map(r => r.lengthMm), ['2550', '2300', '2400']);
+  const cleared = run(zoned, { type: 'setWireLengthDelta', wireIds: ['w1', 'w2'] });
+  assert.deepEqual(fromToRows(cleared).map(r => r.lengthMm), ['2400', '2400', '2400']);
+  assert.equal('lengthDelta' in cleared.wires[0], false);
+});
+
+test('a length delta alone gives no length when the Wire has no Zone distance', () => {
+  const project = run(base(), wire('p1', 'p1', ['red']), { type: 'setWireLengthDelta', wireIds: ['w1'], mm: 150 });
+  assert.equal(fromToRows(project)[0].lengthMm, '');
+});
+
 test('the length is blank without a distance, and when overlapping Zones disagree', () => {
   const zoned = run(
     base(),

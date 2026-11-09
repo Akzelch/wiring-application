@@ -550,6 +550,9 @@ export const App = () => {
   const selectedGauges = [...new Set(project.wires.filter(w => selection.wires.includes(w.id)).map(w => w.gauge))];
   const mixedGauges = selectedGauges.length > 1;
   const shownGauge = selection.wires.length > 0 ? selectedGauges[0] : gauge;
+  const selectedDeltas = [...new Set(project.wires.filter(w => selection.wires.includes(w.id)).map(w => w.lengthDelta))];
+  const setLengthDelta = (text: string) =>
+    dispatch({ type: 'setWireLengthDelta', wireIds: selection.wires, mm: Number(text) || undefined });
   const zonePairs = project.zones.flatMap((a, i) => project.zones.slice(i + 1).map(b => ({ a, b })));
 
   const commitNote = (id: string, text: string) => {
@@ -628,6 +631,12 @@ export const App = () => {
             <option key={g.mm2} value={g.mm2}>{gaugeLabel(g.mm2)}</option>
           ))}
         </select>
+        {selection.wires.length > 0 && (
+          <>
+            <h2>Length delta (mm)</h2>
+            <input type="number" step={1} placeholder={selectedDeltas.length > 1 ? 'Mixed' : '0'} value={selectedDeltas.length === 1 ? selectedDeltas[0] ?? '' : ''} onInput={e => setLengthDelta(e.currentTarget.value)} />
+          </>
+        )}
         {zonePairs.length > 0 && <h2>Zone distances (mm)</h2>}
         {zonePairs.map(({ a, b }) => (
           <label class="distance" key={`${a.id}:${b.id}`}>

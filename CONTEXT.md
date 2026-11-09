@@ -41,8 +41,12 @@ The standard conductor cross-section of a Wire, shown in mm² with the equivalen
 _Avoid_: Diameter, thickness
 
 **Zone distance**:
-The approximate length in millimetres given to a pair of Zones. It is printed as the length of every Wire running between them, with nothing added.
+The approximate length in millimetres given to a pair of Zones. It is printed as the length of every Wire running between them, plus that Wire's Length delta if it has one.
 _Avoid_: Route length, Wire length
+
+**Length delta**:
+A positive or negative number of millimetres set on individual Wires and added to their Zone distance in the printout.
+_Avoid_: Add-on, margin, slack
 
 **Scale**:
 The factor, in half steps, that enlarges a Block and its Pin spacing so Pins stay on the grid.

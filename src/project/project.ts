@@ -94,6 +94,7 @@ export type Command =
   | { type: 'setWireColours'; wireIds: string[]; base?: string; second?: string | null }
   | { type: 'setWireGauge'; wireIds: string[]; gauge?: number }
   | { type: 'stepWireGauge'; wireIds: string[]; step: 1 | -1 }
+  | { type: 'setWireLengthDelta'; wireIds: string[]; mm?: number }
   | { type: 'setZoneDistance'; zoneA: string; zoneB: string; mm?: number }
   | { type: 'addCustomColour'; colour: Colour }
   | { type: 'createHarness'; name: string; wireIds: string[] }
@@ -155,6 +156,9 @@ const replaced = <T extends { id: string }>(items: T[], id: string, change: (ite
 
 const withGauge = ({ gauge: _gauge, ...wire }: Wire, gauge: number | undefined): Wire =>
   gauge === undefined ? wire : { ...wire, gauge };
+
+const withLengthDelta = ({ lengthDelta: _lengthDelta, ...wire }: Wire, mm: number | undefined): Wire =>
+  mm === undefined ? wire : { ...wire, lengthDelta: mm };
 
 const isPair = (d: ZoneDistance, a: string, b: string) =>
   (d.zoneA === a && d.zoneB === b) || (d.zoneA === b && d.zoneB === a);
@@ -355,6 +359,11 @@ export const apply = (project: Project, command: Command): Project => {
       return {
         ...project,
         wires: project.wires.map(w => (command.wireIds.includes(w.id) ? withGauge(w, stepGauge(w.gauge, command.step)) : w)),
+      };
+    case 'setWireLengthDelta':
+      return {
+        ...project,
+        wires: project.wires.map(w => (command.wireIds.includes(w.id) ? withLengthDelta(w, command.mm) : w)),
       };
     case 'setZoneDistance': {
       const { zoneA, zoneB, mm } = command;

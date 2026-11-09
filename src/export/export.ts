@@ -43,7 +43,7 @@ const lengthText = (project: Project, w: Wire): string => {
   const distances = zonesAt(project, w.from).flatMap(a =>
     zonesAt(project, w.to).flatMap(b => zoneDistance(project, a.id, b.id) ?? []),
   );
-  return new Set(distances).size === 1 ? String(distances[0]) : '';
+  return new Set(distances).size === 1 ? String(distances[0] + (w.lengthDelta ?? 0)) : '';
 };
 
 const sortedWires = (project: Project): Wire[] => {

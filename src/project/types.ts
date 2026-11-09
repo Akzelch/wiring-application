@@ -31,6 +31,7 @@ export type Wire = {
   corners: Point[];
   colours: string[];
   gauge?: number;
+  lengthDelta?: number;
 };
 
 export type Harness = { id: string; name: string; wireIds: string[]; arc: Point };
